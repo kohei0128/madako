@@ -1,0 +1,51 @@
+[
+  {
+    "name": "fct_applications",
+    "database": "analytics-dev",
+    "schema_name": "marts",
+    "description": "Submitted applications by service and date.",
+    "materialization": "table",
+    "tags": ["daily", "core"],
+    "tests": ["unique(application_id)", "not_null(application_id)"],
+    "profiled_at": "2026-08-30T09:15:00+09:00",
+    "profiles": [
+      {
+        "dimension_name": null,
+        "dimension_value": null,
+        "record_count": 12480,
+        "columns": [
+          {"name": "application_id", "data_type": "STRING", "description": "Application identifier", "null_count": 0, "null_rate": 0, "distinct_count": 12480},
+          {"name": "service", "data_type": "STRING", "description": "Service name", "null_count": 42, "null_rate": 0.0034, "distinct_count": 4},
+          {"name": "score", "data_type": "FLOAT64", "description": "Screening score", "null_count": 1872, "null_rate": 0.15, "min_value": 0.04, "max_value": 0.99},
+          {"name": "is_approved", "data_type": "BOOL", "description": "Approval result", "null_count": 125, "null_rate": 0.01, "true_count": 8432},
+          {"name": "created_date", "data_type": "DATE", "description": "Submission date", "null_count": 0, "null_rate": 0, "min_value": "2026-07-01", "max_value": "2026-08-29"}
+        ]
+      },
+      {
+        "dimension_name": "service",
+        "dimension_value": "consumer",
+        "record_count": 7640,
+        "columns": [
+          {"name": "application_id", "data_type": "STRING", "description": "Application identifier", "null_count": 0, "null_rate": 0, "distinct_count": 7640},
+          {"name": "service", "data_type": "STRING", "description": "Service name", "null_count": 0, "null_rate": 0, "distinct_count": 1},
+          {"name": "score", "data_type": "FLOAT64", "description": "Screening score", "null_count": 1528, "null_rate": 0.2, "min_value": 0.04, "max_value": 0.96},
+          {"name": "is_approved", "data_type": "BOOL", "description": "Approval result", "null_count": 76, "null_rate": 0.0099, "true_count": 4890},
+          {"name": "created_date", "data_type": "DATE", "description": "Submission date", "null_count": 0, "null_rate": 0, "min_value": "2026-07-01", "max_value": "2026-08-29"}
+        ]
+      },
+      {
+        "dimension_name": "service",
+        "dimension_value": "business",
+        "record_count": 4798,
+        "columns": [
+          {"name": "application_id", "data_type": "STRING", "description": "Application identifier", "null_count": 0, "null_rate": 0, "distinct_count": 4798},
+          {"name": "service", "data_type": "STRING", "description": "Service name", "null_count": 0, "null_rate": 0, "distinct_count": 1},
+          {"name": "score", "data_type": "FLOAT64", "description": "Screening score", "null_count": 344, "null_rate": 0.0717, "min_value": 0.11, "max_value": 0.99},
+          {"name": "is_approved", "data_type": "BOOL", "description": "Approval result", "null_count": 49, "null_rate": 0.0102, "true_count": 3542},
+          {"name": "created_date", "data_type": "DATE", "description": "Submission date", "null_count": 0, "null_rate": 0, "min_value": "2026-07-02", "max_value": "2026-08-29"}
+        ]
+      }
+    ]
+  }
+]
+

@@ -1,0 +1,2 @@
+"""dbt data profile catalog."""
+

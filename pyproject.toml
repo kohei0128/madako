@@ -1,0 +1,27 @@
+[project]
+name = "data-profile"
+version = "0.1.0"
+description = "A data catalog that combines dbt metadata with data profiling results."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.116.0,<1",
+    "uvicorn>=0.35.0,<1",
+]
+
+[project.scripts]
+data-profile = "data_profile.cli:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0,<1",
+    "pytest>=8.4.0,<9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
