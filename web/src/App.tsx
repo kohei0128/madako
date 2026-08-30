@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ColumnProfile, ModelProfile, ProfileSlice } from "./types";
 
 type TypeFilter = "all" | "string" | "numeric" | "boolean" | "date";
+type TrendRange = 30 | 90 | "all";
 const typeFilters: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "All" }, { value: "string", label: "String" },
   { value: "numeric", label: "Numeric" }, { value: "boolean", label: "Boolean" },
@@ -60,11 +61,68 @@ function CompactMetrics({ column, slice }: { column: ColumnProfile; slice: Profi
   return <PairMetric leftLabel="Min" leftValue={String(column.min_value ?? "—")} rightLabel="Max" rightValue={String(column.max_value ?? "—")} />;
 }
 
+function isTemporal(profiles: ProfileSlice[]): boolean {
+  return profiles.length > 0 && profiles.every((profile) => /^\d{4}-\d{2}-\d{2}$/.test(profile.dimension_value ?? ""));
+}
+
+function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; filter: TypeFilter; range: TrendRange }) {
+  const ordered = [...profiles].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? ""));
+  const visibleProfiles = range === "all" ? ordered : ordered.slice(-range);
+  const latest = visibleProfiles.at(-1);
+  const previous = visibleProfiles.at(-2);
+  if (!latest) return null;
+  const columns = latest.columns.filter((column) => matchesType(column, filter));
+
+  return <div className="table-wrap trend-table"><table>
+    <thead><tr><th>Column</th><th>Type</th><th>NULL rate trend</th><th>Latest</th><th>Change</th><th>Latest metrics</th></tr></thead>
+    <tbody>{columns.map((column) => {
+      const previousColumn = previous?.columns.find((item) => item.name === column.name);
+      const change = previousColumn ? (column.null_rate - previousColumn.null_rate) * 100 : null;
+      return <tr key={column.name}>
+        <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>
+        <td><code>{column.data_type}</code></td>
+        <td><div className="heatmap" aria-label={`NULL rate trend for ${column.name}`}>
+          {visibleProfiles.map((profile) => {
+            const point = profile.columns.find((item) => item.name === column.name);
+            const rate = point?.null_rate ?? 0;
+            return <span key={profile.dimension_value} className={point ? "heat-cell" : "heat-cell missing"}
+              style={{ "--heat": String(Math.max(.05, rate)) } as React.CSSProperties}
+              title={`${profile.dimension_value}: ${point ? `${(rate * 100).toFixed(1)}% NULL (${point.null_count.toLocaleString()})` : "No data"}`} />;
+          })}
+        </div><small className="trend-dates"><span>{visibleProfiles[0]?.dimension_value}</span><span>{latest.dimension_value}</span></small></td>
+        <td className="latest-value">{(column.null_rate * 100).toFixed(1)}%<small>{column.null_count.toLocaleString()} nulls</small></td>
+        <td className={`change ${change !== null && change > 0 ? "worse" : change !== null && change < 0 ? "better" : ""}`}>
+          {change === null ? "—" : `${change > 0 ? "+" : ""}${change.toFixed(1)}pt`}
+        </td>
+        <td><CompactMetrics column={column} slice={latest} /></td>
+      </tr>;
+    })}</tbody>
+  </table></div>;
+}
+
+function CategoricalTable({ profiles, filter }: { profiles: ProfileSlice[]; filter: TypeFilter }) {
+  const columns = profiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
+  return <div className="table-wrap comparison-table"><table>
+    <thead><tr><th>Column</th><th>Type</th>{profiles.map((profile) => <th key={profile.dimension_value}>{profile.dimension_value}</th>)}</tr></thead>
+    <tbody>{columns.map((baseColumn) => <tr key={baseColumn.name}>
+      <td className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></td>
+      <td><code>{baseColumn.data_type}</code></td>
+      {profiles.map((profile) => {
+        const column = profile.columns.find((item) => item.name === baseColumn.name);
+        return <td key={profile.dimension_value}>{column ? <div className="comparison-cell">
+          <NullMetric column={column} /><CompactMetrics column={column} slice={profile} />
+        </div> : <span className="missing-value">No data</span>}</td>;
+      })}
+    </tr>)}</tbody>
+  </table></div>;
+}
+
 function App() {
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
   const [sliceIndex, setSliceIndex] = useState(0);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [trendRange, setTrendRange] = useState<TrendRange>(30);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
 
@@ -83,7 +141,12 @@ function App() {
   )), [model]);
   const activeDimension = slice?.dimension_name ?? null;
   const dimensionSlices = model?.profiles.filter((profile) => profile.dimension_name === activeDimension) ?? [];
-  const visibleColumns = slice?.columns.filter((column) => matchesType(column, typeFilter)) ?? [];
+  const temporalDimension = activeDimension !== null && isTemporal(dimensionSlices);
+  const latestDimensionSlice = temporalDimension
+    ? [...dimensionSlices].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? "")).at(-1)
+    : undefined;
+  const summarySlice = latestDimensionSlice ?? slice;
+  const visibleColumns = summarySlice?.columns.filter((column) => matchesType(column, typeFilter)) ?? [];
   const filteredModels = useMemo(
     () => models.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [models, query],
   );
@@ -128,7 +191,7 @@ function App() {
           <div className="eyebrow">{model.database} / {model.schema}</div>
           <div className="title-row"><h1>{model.name}</h1><span className="pill">{model.materialization}</span></div>
           <p>{model.description}</p>
-          <div className="metadata"><span><b>{slice.record_count.toLocaleString()}</b> rows</span><span>Profiled {new Date(model.profiled_at).toLocaleString()}</span><span>{model.tests.length} dbt tests</span></div>
+          <div className="metadata"><span><b>{summarySlice!.record_count.toLocaleString()}</b> {temporalDimension ? `rows in latest partition (${summarySlice!.dimension_value})` : "rows"}</span><span>Profiled {new Date(model.profiled_at).toLocaleString()}</span><span>{model.tests.length} dbt tests</span></div>
         </header>
 
         <div className="profile-by">
@@ -137,23 +200,23 @@ function App() {
             <button className={activeDimension === null ? "active" : ""} onClick={() => selectDimension(null)}>Overall</button>
             {dimensionNames.map((dimension) => <button className={activeDimension === dimension ? "active" : ""} key={dimension} onClick={() => selectDimension(dimension)}>{dimension}</button>)}
           </div>
-          {activeDimension && dimensionSlices.length > 1 && <label className="dimension-value">Value
-            <select value={sliceIndex} onChange={(event) => setSliceIndex(Number(event.target.value))}>
-              {model.profiles.map((profile, index) => profile.dimension_name === activeDimension && <option value={index} key={profile.dimension_value}>{profile.dimension_value}</option>)}
-            </select>
-          </label>}
         </div>
 
         <div className="columns-heading">
-          <div><h2>Columns</h2><span>{visibleColumns.length} of {slice.columns.length}</span></div>
+          <div><h2>Columns</h2><span>{visibleColumns.length} of {summarySlice!.columns.length}</span></div>
           <div className="type-tabs" aria-label="Filter columns by type">
             {typeFilters.map((filter) => <button className={typeFilter === filter.value ? "active" : ""} key={filter.value} onClick={() => setTypeFilter(filter.value)}>{filter.label}</button>)}
           </div>
+          {temporalDimension && <div className="range-tabs" aria-label="Trend range">
+            {([30, 90, "all"] as TrendRange[]).map((range) => <button className={trendRange === range ? "active" : ""} key={range} onClick={() => setTrendRange(range)}>{range === "all" ? "All" : `Latest ${range}`}</button>)}
+          </div>}
         </div>
-        <div className="table-wrap">
+        {activeDimension === null && <div className="table-wrap">
           <table><thead>{renderHeaders()}</thead><tbody>{visibleColumns.map((column) => <tr key={column.name}>{renderCells(column)}</tr>)}</tbody></table>
           {visibleColumns.length === 0 && <div className="empty-state">No columns match this type.</div>}
-        </div>
+        </div>}
+        {temporalDimension && <TemporalTable profiles={dimensionSlices} filter={typeFilter} range={trendRange} />}
+        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} />}
       </>}
     </section>
   </main>;
