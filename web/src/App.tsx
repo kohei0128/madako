@@ -208,20 +208,36 @@ function App() {
       <div className="brand">data profile <span>alpha</span></div>
       <label className="search"><span>Search models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model name" /></label>
       <div className="tree-label">Explorer</div>
-      {filteredModels.map((item) => <button className={`model-item ${item.name === selectedModel ? "selected" : ""}`} key={item.name} onClick={() => { setSelectedModel(item.name); setSliceIndex(0); setTypeFilter("all"); }}>
-        <span className="table-icon">▦</span><span><small>{item.database} / {item.schema}</small>{item.name}</span>
+      {filteredModels.map((item) => <button className={`model-item ${item.name === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.name); setSliceIndex(0); setTypeFilter("all"); }}>
+        <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.database} / {item.schema} · {item.resource_type}</small>{item.name}</span>
       </button>)}
     </aside>
 
     <section className="detail">
       {error && <div className="notice error">{error}. Is the API running?</div>}
       {!model && !error && <div className="notice">Loading profile…</div>}
+      {model && !slice && <>
+        <header>
+          <div className="title-row"><h1>{model.name}</h1><span className="pill">{model.materialization}</span></div>
+          <p>{model.description || "No description"}</p>
+          <div className="eyebrow">{model.database} / {model.schema}</div>
+          <div className="metadata"><span>{model.columns.length} columns</span><span>{model.tests.length} dbt tests</span><span>Profile not generated</span></div>
+        </header>
+        <div className="profile-status"><strong>Metadata available</strong><span>Profiling metrics have not been generated for this relation yet.</span></div>
+        <div className="columns-heading"><div><h2>Columns</h2><span>{model.columns.length}</span></div></div>
+        <div className="table-wrap metadata-table"><table>
+          <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>{model.columns.map((column) => <tr key={column.name}>
+            <td className="column-name"><strong>{column.name}</strong></td><td><code>{column.data_type}</code></td><td>{column.description || "—"}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </>}
       {model && slice && <>
         <header>
           <div className="title-row"><h1>{model.name}</h1><span className="pill">{model.materialization}</span></div>
           <p>{model.description}</p>
           <div className="eyebrow">{model.database} / {model.schema}</div>
-          <div className="metadata"><span><b>{(overallSlice?.record_count ?? slice.record_count).toLocaleString()}</b> total rows</span><span>Profiled {new Date(model.profiled_at).toLocaleString()}</span><span>{model.tests.length} dbt tests</span></div>
+          <div className="metadata"><span><b>{(overallSlice?.record_count ?? slice.record_count).toLocaleString()}</b> total rows</span><span>Profiled {model.profiled_at ? new Date(model.profiled_at).toLocaleString() : "—"}</span><span>{model.tests.length} dbt tests</span></div>
           {temporalDimension && latestDimensionSlice && <div className="latest-partition"><span>Latest partition</span><strong>{latestDimensionSlice.dimension_value}</strong><small>{latestDimensionSlice.record_count.toLocaleString()} rows</small></div>}
         </header>
 

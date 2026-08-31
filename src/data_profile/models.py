@@ -32,13 +32,23 @@ class ProfileSlice(BaseModel):
         return self
 
 
+class ColumnMetadata(BaseModel):
+    name: str
+    data_type: str
+    description: str = ""
+
+
 class ModelProfile(BaseModel):
+    unique_id: str = ""
+    resource_type: Literal["model", "source"] = "model"
     name: str
     database: str
     schema_name: str = Field(serialization_alias="schema")
+    relation_name: str = ""
     description: str = ""
     materialization: str
     tags: list[str] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
-    profiled_at: datetime
-    profiles: list[ProfileSlice]
+    columns: list[ColumnMetadata] = Field(default_factory=list)
+    profiled_at: datetime | None = None
+    profiles: list[ProfileSlice] = Field(default_factory=list)

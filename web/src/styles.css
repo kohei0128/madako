@@ -27,6 +27,10 @@ header p { color: #5f6e69; font-size: 12px; margin: 7px 0 10px; }
 .latest-partition span { color: #788681; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
 .latest-partition strong { color: #263630; font-size: 11px; }
 .latest-partition small { color: #6f7d78; font-size: 9px; }
+.profile-status { display: flex; align-items: baseline; gap: 10px; margin-top: 22px; padding: 9px 11px; color: #687772; background: #eef3f1; border-left: 2px solid #8ba89c; font-size: 10px; }
+.profile-status strong { color: #31443d; font-size: 11px; }
+.metadata-table th:first-child, .metadata-table td:first-child { width: 28%; }
+.metadata-table th:nth-child(2), .metadata-table td:nth-child(2) { width: 14%; }
 .profile-by { display: flex; align-items: center; min-height: 34px; gap: 10px; margin-top: 22px; padding: 7px 0; border-top: 1px solid #dfe5e3; border-bottom: 1px solid #dfe5e3; }
 .profile-by > span { color: #687772; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 .segments, .type-tabs { display: flex; align-items: center; }

@@ -4,7 +4,7 @@ from typing import Protocol
 
 import duckdb
 
-from data_profile.models import ColumnProfile, ModelProfile, ProfileSlice
+from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 
 
 class ProfileNotFoundError(Exception):
@@ -41,8 +41,9 @@ class DuckDBProfileRepository:
         with duckdb.connect() as connection:
             rows = connection.execute(
                 """
-                SELECT model_name, database_name, schema_name, description,
-                       materialization, tags_json, tests_json, profiled_at
+                SELECT unique_id, resource_type, model_name, database_name, schema_name,
+                       relation_name, description, materialization, tags_json, tests_json,
+                       columns_json, profiled_at
                 FROM read_parquet(?)
                 ORDER BY model_name
                 """,
@@ -54,8 +55,9 @@ class DuckDBProfileRepository:
         with duckdb.connect() as connection:
             row = connection.execute(
                 """
-                SELECT model_name, database_name, schema_name, description,
-                       materialization, tags_json, tests_json, profiled_at
+                SELECT unique_id, resource_type, model_name, database_name, schema_name,
+                       relation_name, description, materialization, tags_json, tests_json,
+                       columns_json, profiled_at
                 FROM read_parquet(?)
                 WHERE model_name = ?
                 """,
@@ -66,7 +68,7 @@ class DuckDBProfileRepository:
         return self._build_model(row)
 
     def _build_model(self, row: tuple) -> ModelProfile:
-        model_name = row[0]
+        model_name = row[2]
         with duckdb.connect() as connection:
             profile_rows = connection.execute(
                 """
@@ -117,14 +119,18 @@ class DuckDBProfileRepository:
             ))
 
         return ModelProfile(
+            unique_id=row[0],
+            resource_type=row[1],
             name=model_name,
-            database=row[1],
-            schema_name=row[2],
-            description=row[3],
-            materialization=row[4],
-            tags=json.loads(row[5]),
-            tests=json.loads(row[6]),
-            profiled_at=row[7],
+            database=row[3],
+            schema_name=row[4],
+            relation_name=row[5],
+            description=row[6],
+            materialization=row[7],
+            tags=json.loads(row[8]),
+            tests=json.loads(row[9]),
+            columns=[ColumnMetadata.model_validate(column) for column in json.loads(row[10])],
+            profiled_at=row[11],
             profiles=slices,
         )
 

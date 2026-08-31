@@ -1,0 +1,42 @@
+from pathlib import Path
+
+import pytest
+
+from data_profile.dbt_artifacts import ArtifactError, read_dbt_artifacts
+from data_profile.repository import DuckDBProfileRepository
+from data_profile.storage import build_dbt_artifact_storage
+
+
+TSUBO_PROJECT = Path(__file__).resolve().parents[3] / "dbt" / "tsubo"
+
+
+def test_reads_tsubo_models_and_sources() -> None:
+    with pytest.warns(UserWarning, match="catalog.json is older"):
+        resources = read_dbt_artifacts(TSUBO_PROJECT)
+
+    assert len([item for item in resources if item.resource_type == "model"]) == 10
+    assert len([item for item in resources if item.resource_type == "source"]) == 4
+    zaim = next(item for item in resources if item.name == "stg_zaim_transactions")
+    assert zaim.database == "northern-bliss-362623"
+    assert zaim.schema_name == "tsubo_staging"
+    assert zaim.materialization == "view"
+    assert zaim.profiles == []
+    assert zaim.columns[0].name == "as_of_date"
+    assert zaim.columns[0].data_type == "DATE"
+    assert "not_null" in zaim.tests
+
+
+def test_artifact_storage_round_trip(tmp_path: Path) -> None:
+    with pytest.warns(UserWarning):
+        models_path, profiles_path = build_dbt_artifact_storage(TSUBO_PROJECT, tmp_path)
+
+    repository = DuckDBProfileRepository(models_path, profiles_path)
+    resources = repository.list_models()
+    assert len(resources) == 14
+    assert all(resource.profiles == [] for resource in resources)
+    assert repository.get_model("stg_zaim_transactions").columns[10].data_type == "INT64"
+
+
+def test_missing_manifest_has_clear_error(tmp_path: Path) -> None:
+    with pytest.raises(ArtifactError, match="dbt manifest not found"):
+        read_dbt_artifacts(tmp_path)

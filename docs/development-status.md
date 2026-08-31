@@ -25,9 +25,13 @@
 - Parquetへのmodel metadataとcolumn profileの保存
 - DuckDBによるOverall / DATE / categorical profileの再構築
 - JSON fixtureからParquetを生成する`build-sample`コマンド
+- dbt Coreの`manifest.json` / `catalog.json`読み込み
+- dbt models / sources / columns / testsのmetadata import
+- profile未生成relationのAPI・UI表示
+- `tsubo`の10 models＋4 sourcesを使ったartifact integration test
 - APIテストとWebのproduction build
 
-現在のAPIは`fixtures/parquet`のParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用Parquetを生成する入力として残している。BigQueryとdbt artifactsにはまだ接続していない。
+現在のAPIは指定したstorage directoryのParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用profileの入力、`fixtures/tsubo`はdbt artifactsから生成したmetadata-only storageとして使用する。BigQueryにはまだ接続していない。
 
 ## 現在のプロダクト方針
 
@@ -209,27 +213,45 @@ fixture JSONをParquetへ変換し、DuckDBから同じAPI contractを返すvert
 - Numeric / DATEのMin / Maxをcolumn typeに応じて復元
 - Overall、DATE dimension、categorical dimensionのrepositoryテストを追加
 
+## 完了したdbt artifacts slice
+
+`import-dbt`コマンドでdbt Core projectのartifactsをParquetへ取り込める。
+
+```bash
+data-profile import-dbt --project-dir <dbt-project> --output-dir <storage-dir>
+```
+
+- project packageに属するmodelsとsourcesだけをimport
+- `manifest.json`からdescription、materialization、tags、testsを取得
+- `catalog.json`から実relationのcolumn orderとcolumn typeを取得
+- catalogがない場合はmanifestのcolumn metadataへfallback
+- catalogがmanifestより古い場合はwarningを表示
+- profileが存在しないrelationは`profiles=[]`と`profiled_at=NULL`で表現
+
+`tsubo`では10 models、4 sources、合計14 relationsをimportできる。現在の`catalog.json`は2026-07-04、`manifest.json`は2026-08-31生成のため、実profiling前にartifactを更新する必要がある。
+
 ## 次の開発段階
 
-次は、dbt Core artifactsからmodel / source metadataを読み取り、現在のcatalogへ統合するvertical sliceを実装する。
+次は、`stg_zaim_transactions`をpilotとしてprofiling対象設定を解決し、BigQuery SQLを実行せずに確認できるplanを実装する。
 
 完了条件:
 
-1. `manifest.json`からdbt modelsとsourcesを列挙できる
-2. model name、database、schema、description、materialization、tags、testsを取得できる
-3. `catalog.json`が存在する場合に実際のcolumn typeを取得できる
-4. dbt metadataと既存profile metricsをmodel identifierで結合できる
-5. artifactsが欠けている場合に分かりやすいerrorを返す
-6. 複数modelをExplorerとAPIへ表示できるfixture testを追加する
+1. dbt `meta.profiling`からenabledとdimensionsを解決できる
+2. `--select stg_zaim_transactions`で対象を1 relationに限定できる
+3. Overallと`as_of_date` dimension用のtype-aware BigQuery SQLを生成できる
+4. unsupported column typeをquery対象から安全に除外し理由を表示できる
+5. dry runでestimated bytesを取得できる
+6. configured `max_bytes_billed`と比較し、超過時は実行を拒否できる
+7. `data-profile plan`はBigQuery queryを実行せずSQLとcost情報だけを表示する
 
 この段階でもBigQuery queryは実行しない。dbt metadataの読み取り境界を安定させた後、次の順序で進める。
 
 ```text
-dbt artifactsの読み込み
+profiling設定とselection
     ↓
-profiling対象とdimension設定の解決
+BigQuery SQL生成
     ↓
-BigQuery SQL生成とcost safety
+dry runとcost safety
     ↓
 profile CLIによる実行・保存
 ```

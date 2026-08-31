@@ -20,14 +20,17 @@ export interface ProfileSlice {
 }
 
 export interface ModelProfile {
+  unique_id: string;
+  resource_type: "model" | "source";
   name: string;
   database: string;
   schema: string;
+  relation_name: string;
   description: string;
   materialization: string;
   tags: string[];
   tests: string[];
-  profiled_at: string;
+  columns: { name: string; data_type: string; description: string }[];
+  profiled_at: string | null;
   profiles: ProfileSlice[];
 }
-

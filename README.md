@@ -19,7 +19,7 @@ npm install
 
 ## Run
 
-ターミナルを2つ使います。
+サンプルprofileを表示する場合は、ターミナルを2つ使います。
 
 ```bash
 cd app/data_profile
@@ -32,6 +32,20 @@ npm run dev
 ```
 
 ブラウザで `http://localhost:5173` を開きます。API仕様は `http://127.0.0.1:8000/docs` で確認できます。
+
+### tsuboのdbt metadataを表示する
+
+```bash
+cd app/data_profile
+UV_CACHE_DIR=.uv-cache uv run data-profile import-dbt \
+  --project-dir ../../dbt/tsubo \
+  --output-dir fixtures/tsubo
+
+UV_CACHE_DIR=.uv-cache uv run data-profile serve \
+  --storage-dir fixtures/tsubo
+```
+
+`tsubo`のmodelsとsourcesはprofile未生成なので、UIにはdbt metadata、columns、testsと`Profile not generated`が表示されます。現在の`catalog.json`は`manifest.json`より古いため、import時にcolumn typesが古い可能性を警告します。
 
 ## Test
 
@@ -51,4 +65,4 @@ npm run build
 
 ## Next slice
 
-dbt Coreの`manifest.json`と`catalog.json`を読み込み、model / source metadataを現在のcatalogへ統合します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
+`stg_zaim_transactions`を最初の対象としてprofiling設定を解決し、BigQuery SQLの生成とdry runによるcost確認を実装します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。

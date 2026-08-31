@@ -16,16 +16,20 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 
 | Column | DuckDB type | Null | Description |
 |---|---|---|---|
+| unique_id | VARCHAR | No | dbt unique ID |
+| resource_type | VARCHAR | No | modelまたはsource |
 | model_name | VARCHAR | No | model / sourceの一意な名前 |
 | database_name | VARCHAR | No | database / BigQuery project |
 | schema_name | VARCHAR | No | schema / BigQuery dataset |
+| relation_name | VARCHAR | No | Warehouse上のrelation名 |
 | description | VARCHAR | No | dbt description |
 | materialization | VARCHAR | No | table、viewなど |
 | tags_json | VARCHAR | No | tagsのJSON array |
 | tests_json | VARCHAR | No | dbt testsのJSON array |
-| profiled_at | VARCHAR | No | profile実行日時のISO 8601文字列 |
+| columns_json | VARCHAR | No | profile未生成時にも表示するcolumn metadata |
+| profiled_at | VARCHAR | Yes | profile実行日時のISO 8601文字列 |
 
-`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。
+`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。
 
 ## column_profiles.parquet
 
