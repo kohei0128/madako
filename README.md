@@ -47,6 +47,20 @@ UV_CACHE_DIR=.uv-cache uv run data-profile serve \
 
 `tsubo`のmodelsとsourcesはprofile未生成なので、UIにはdbt metadata、columns、testsと`Profile not generated`が表示されます。現在の`catalog.json`は`manifest.json`より古いため、import時にcolumn typesが古い可能性を警告します。
 
+`stg_zaim_transactions`だけをprofilingする場合:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run data-profile profile \
+  --storage-dir fixtures/tsubo \
+  --select stg_zaim_transactions \
+  --dimension as_of_date \
+  --project northern-bliss-362623 \
+  --location asia-northeast1 \
+  --max-bytes-billed 1000000000
+```
+
+コマンドは最初にdry runを実行し、推定処理量が`--max-bytes-billed`を超える場合は実queryを実行しません。現在は1 relationと1つのDATE dimensionだけを明示的に指定するpilot実装です。
+
 ## Test
 
 ```bash
@@ -65,4 +79,4 @@ npm run build
 
 ## Next slice
 
-`stg_zaim_transactions`を最初の対象としてprofiling設定を解決し、BigQuery SQLの生成とdry runによるcost確認を実装します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
+dbt `meta.profiling`から対象とdimensionsを解決し、pilot用の明示引数を設定駆動へ置き換えます。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。

@@ -29,6 +29,9 @@
 - dbt models / sources / columns / testsのmetadata import
 - profile未生成relationのAPI・UI表示
 - `tsubo`の10 models＋4 sourcesを使ったartifact integration test
+- `stg_zaim_transactions`に限定したBigQuery profiling pilot
+- 実行前dry runと`max_bytes_billed`によるcost safety
+- Overall＋DATE dimension profileのParquet統合
 - APIテストとWebのproduction build
 
 現在のAPIは指定したstorage directoryのParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用profileの入力、`fixtures/tsubo`はdbt artifactsから生成したmetadata-only storageとして使用する。BigQueryにはまだ接続していない。
@@ -230,19 +233,34 @@ data-profile import-dbt --project-dir <dbt-project> --output-dir <storage-dir>
 
 `tsubo`では10 models、4 sources、合計14 relationsをimportできる。現在の`catalog.json`は2026-07-04、`manifest.json`は2026-08-31生成のため、実profiling前にartifactを更新する必要がある。
 
+## 完了したBigQuery pilot
+
+`stg_zaim_transactions`だけを対象に、Overallと`as_of_date`ごとのprofileをBigQueryから生成した。
+
+- Relation: `northern-bliss-362623.tsubo_staging.stg_zaim_transactions`
+- 対応columns: 16
+- Overall Record Count: 271
+- DATE values: 115
+- DATE range: 2026-03-01〜2026-07-30
+- dry run estimated bytes: 44,762 bytes
+- query上限: 1,000,000,000 bytes
+- 保存したmetric rows: 1,856
+- profile slices: 116（Overall＋115日）
+
+実行結果は`fixtures/tsubo`へ統合され、14 relationsのうち`stg_zaim_transactions`だけがprofile済みである。その他13 relationsはmetadata-onlyのまま維持している。
+
 ## 次の開発段階
 
-次は、`stg_zaim_transactions`をpilotとしてprofiling対象設定を解決し、BigQuery SQLを実行せずに確認できるplanを実装する。
+次は、pilotで明示している対象とdimensionをdbt設定から解決し、実行前にSQLとcostを確認できる独立したplanコマンドへ分離する。
 
 完了条件:
 
 1. dbt `meta.profiling`からenabledとdimensionsを解決できる
-2. `--select stg_zaim_transactions`で対象を1 relationに限定できる
-3. Overallと`as_of_date` dimension用のtype-aware BigQuery SQLを生成できる
-4. unsupported column typeをquery対象から安全に除外し理由を表示できる
-5. dry runでestimated bytesを取得できる
-6. configured `max_bytes_billed`と比較し、超過時は実行を拒否できる
-7. `data-profile plan`はBigQuery queryを実行せずSQLとcost情報だけを表示する
+2. project / directory / model単位の設定継承と上書きを解決できる
+3. unsupported column typeをquery対象から安全に除外し理由を表示できる
+4. `data-profile plan`は実queryを実行せずSQL、対象、estimated bytesを表示する
+5. `profile`はplan結果と同じSQL・上限を使って実行する
+6. artifact再import時にも既存profileを安全に引き継げる
 
 この段階でもBigQuery queryは実行しない。dbt metadataの読み取り境界を安定させた後、次の順序で進める。
 
