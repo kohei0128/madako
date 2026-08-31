@@ -22,9 +22,12 @@
 - DATE dimensionのNULL Rate heatmap、最新partition、previous partitionとの比較
 - DATE dimensionの`Latest 30 / Latest 90 / All`切り替え
 - categorical dimensionのvalue間比較
+- Parquetへのmodel metadataとcolumn profileの保存
+- DuckDBによるOverall / DATE / categorical profileの再構築
+- JSON fixtureからParquetを生成する`build-sample`コマンド
 - APIテストとWebのproduction build
 
-現在のデータは`fixtures/sample_profiles.json`から読み込んでいる。BigQuery、dbt artifacts、Parquet、DuckDBにはまだ接続していない。
+現在のAPIは`fixtures/parquet`のParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用Parquetを生成する入力として残している。BigQueryとdbt artifactsにはまだ接続していない。
 
 ## 現在のプロダクト方針
 
@@ -137,7 +140,11 @@ serviceなど、順序を持たず100〜200 valuesになる可能性があるdim
 ```text
 fixtures/sample_profiles.json
         ↓
-JsonProfileRepository
+build-sample
+        ↓
+models.parquet + column_profiles.parquet
+        ↓
+DuckDBProfileRepository
         ↓
 FastAPI
         ↓
@@ -149,6 +156,8 @@ Backend:
 - Python 3.12+
 - FastAPI
 - Pydantic
+- DuckDB
+- Parquet
 - uv
 - pytest
 
@@ -188,26 +197,34 @@ ModelProfile
 
 Overall profileでは`dimension_name`と`dimension_value`をNULLにする。Dimension profileでは、同じ`dimension_name`に対してvalueごとのProfileSliceを持つ。
 
-このAPI契約は次のParquet / DuckDB実装でも維持する。保存時のParquet schemaは、現在の階層JSONをそのまま保存するのではなく、要件定義にある共通profile relationへ正規化する予定である。
+このAPI契約を維持したまま、保存形式を階層JSONから正規化したParquet relationsへ変更した。物理schemaは[Profile Storage Schema](profile-storage-schema.md)を参照する。
+
+## 完了したStorage slice
+
+fixture JSONをParquetへ変換し、DuckDBから同じAPI contractを返すvertical sliceは完了した。
+
+- model metadataとprofile metricsを別Parquetへ保存
+- OverallとDimension profileを共通relationで保存
+- DuckDB repositoryからAPIの階層modelを再構築
+- Numeric / DATEのMin / Maxをcolumn typeに応じて復元
+- Overall、DATE dimension、categorical dimensionのrepositoryテストを追加
 
 ## 次の開発段階
 
-次は、fixture JSONをParquetへ置き換え、DuckDBから現在と同じAPIレスポンスを組み立てるvertical sliceを実装する。
+次は、dbt Core artifactsからmodel / source metadataを読み取り、現在のcatalogへ統合するvertical sliceを実装する。
 
 完了条件:
 
-1. profile relationのParquet schemaを確定する
-2. サンプルprofileをParquetとして生成できる
-3. DuckDBでOverallとDimension profileを取得できる
-4. `JsonProfileRepository`をDuckDB実装へ差し替えられる
-5. 現在のAPI contractを変更せずWeb UIを表示できる
-6. Overall、DATE dimension、categorical dimensionのrepositoryテストを追加する
+1. `manifest.json`からdbt modelsとsourcesを列挙できる
+2. model name、database、schema、description、materialization、tags、testsを取得できる
+3. `catalog.json`が存在する場合に実際のcolumn typeを取得できる
+4. dbt metadataと既存profile metricsをmodel identifierで結合できる
+5. artifactsが欠けている場合に分かりやすいerrorを返す
+6. 複数modelをExplorerとAPIへ表示できるfixture testを追加する
 
-この段階では、まだBigQuery queryを実行しない。保存・読み取り境界を先に安定させた後、次の順序で進める。
+この段階でもBigQuery queryは実行しない。dbt metadataの読み取り境界を安定させた後、次の順序で進める。
 
 ```text
-Parquet + DuckDB
-    ↓
 dbt artifactsの読み込み
     ↓
 profiling対象とdimension設定の解決
@@ -219,8 +236,6 @@ profile CLIによる実行・保存
 
 ## 未決事項
 
-- Parquetの物理schemaとfile layout
-- model metadataとprofile metricsを同じParquetへ保存するか分離するか
 - DATE dimension以外の順序付きdimensionをどう宣言するか
 - dimension cardinalityの上限と高cardinality時の保存・表示方針
 - profile対象を指定するdbt `meta` schema

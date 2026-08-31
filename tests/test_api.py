@@ -3,8 +3,21 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
+from pydantic import ValidationError
 
+from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
+from data_profile.storage import build_parquet_fixture
+
+
+SAMPLE_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_profiles.json"
+
+
+@pytest.fixture
+def repository(tmp_path: Path) -> DuckDBProfileRepository:
+    models_path, profiles_path = build_parquet_fixture(SAMPLE_FIXTURE, tmp_path)
+    return DuckDBProfileRepository(models_path, profiles_path)
 
 
 def request(app, path: str) -> httpx.Response:
@@ -16,8 +29,8 @@ def request(app, path: str) -> httpx.Response:
     return asyncio.run(send())
 
 
-def test_get_model_profile() -> None:
-    response = request(create_app(), "/api/models/fct_applications/profile")
+def test_get_model_profile(repository: DuckDBProfileRepository) -> None:
+    response = request(create_app(repository), "/api/models/fct_applications/profile")
 
     assert response.status_code == 200
     payload = response.json()
@@ -25,10 +38,21 @@ def test_get_model_profile() -> None:
     assert payload["schema"] == "marts"
     assert payload["profiles"][0]["record_count"] == 12480
     assert payload["profiles"][0]["columns"][2]["null_rate"] == 0.15
+    assert payload["profiles"][0]["columns"][2]["min_value"] == 0.04
 
 
-def test_unknown_model_returns_404() -> None:
-    response = request(create_app(), "/api/models/unknown/profile")
+def test_date_and_categorical_profiles_are_reconstructed(repository: DuckDBProfileRepository) -> None:
+    model = repository.get_model("fct_applications")
+
+    date_profiles = [profile for profile in model.profiles if profile.dimension_name == "created_date"]
+    service_profiles = [profile for profile in model.profiles if profile.dimension_name == "service"]
+    assert len(date_profiles) == 45
+    assert date_profiles[-1].dimension_value == "2026-08-30"
+    assert {profile.dimension_value for profile in service_profiles} == {"consumer", "business"}
+
+
+def test_unknown_model_returns_404(repository: DuckDBProfileRepository) -> None:
+    response = request(create_app(repository), "/api/models/unknown/profile")
 
     assert response.status_code == 404
 
@@ -36,32 +60,24 @@ def test_unknown_model_returns_404() -> None:
 def test_invalid_fixture_is_rejected(tmp_path: Path) -> None:
     fixture = tmp_path / "invalid.json"
     fixture.write_text(
-        json.dumps(
-            [
-                {
-                    "name": "broken",
-                    "database": "project",
-                    "schema_name": "dataset",
-                    "materialization": "table",
-                    "profiled_at": "2026-08-30T00:00:00Z",
-                    "profiles": [
-                        {
-                            "record_count": 1,
-                            "columns": [
-                                {
-                                    "name": "id",
-                                    "data_type": "STRING",
-                                    "null_count": 2,
-                                    "null_rate": 1.5
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        ),
+        json.dumps([{
+            "name": "broken",
+            "database": "project",
+            "schema_name": "dataset",
+            "materialization": "table",
+            "profiled_at": "2026-08-30T00:00:00Z",
+            "profiles": [{
+                "record_count": 1,
+                "columns": [{
+                    "name": "id",
+                    "data_type": "STRING",
+                    "null_count": 2,
+                    "null_rate": 1.5,
+                }],
+            }],
+        }]),
         encoding="utf-8",
     )
-    response = request(create_app(fixture), "/api/models")
 
-    assert response.status_code == 500
+    with pytest.raises(ValidationError):
+        build_parquet_fixture(fixture, tmp_path / "parquet")

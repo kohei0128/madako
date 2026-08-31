@@ -4,13 +4,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from data_profile.models import ModelProfile
-from data_profile.repository import JsonProfileRepository, ProfileNotFoundError
+from data_profile.repository import DuckDBProfileRepository, ProfileNotFoundError, ProfileRepository
+from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME
 
 
-DEFAULT_FIXTURE = Path(__file__).resolve().parents[2] / "fixtures" / "sample_profiles.json"
+DEFAULT_STORAGE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "parquet"
 
 
-def create_app(fixture_path: Path = DEFAULT_FIXTURE) -> FastAPI:
+def create_app(repository: ProfileRepository | None = None) -> FastAPI:
     app = FastAPI(title="Data Profile API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -18,7 +19,10 @@ def create_app(fixture_path: Path = DEFAULT_FIXTURE) -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-    repository = JsonProfileRepository(fixture_path)
+    repository = repository or DuckDBProfileRepository(
+        DEFAULT_STORAGE_DIR / MODELS_FILENAME,
+        DEFAULT_STORAGE_DIR / PROFILES_FILENAME,
+    )
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

@@ -2,15 +2,16 @@
 
 dbt metadataと実データのprofiling結果を同じ画面で確認する、ローカルファーストのデータカタログです。
 
-現在は最初のvertical sliceとして、fixtureに保存した1モデルのOverall / Dimension profileをAPIから取得し、Explorerと高密度なColumns一覧に表示します。DATE dimensionのpartition trendとcategorical dimensionのvalue比較にも対応しています。
+現在は、Parquetに保存した1モデルのOverall / Dimension profileをDuckDBで読み取り、API経由でExplorerと高密度なColumns一覧に表示します。DATE dimensionのpartition trendとcategorical dimensionのvalue比較にも対応しています。
 
-BigQuery、dbt artifacts、Parquet、DuckDBとの接続はまだ含みません。現在の進捗、実装で具体化した方針、次の開発段階は[開発状況と現在の方針](docs/development-status.md)を参照してください。MVP全体の基準は[MVP要件定義](docs/product-requirements.md)にあります。
+BigQueryとdbt artifactsにはまだ接続していません。現在の進捗、実装で具体化した方針、次の開発段階は[開発状況と現在の方針](docs/development-status.md)を参照してください。Parquetの定義は[Profile Storage Schema](docs/profile-storage-schema.md)、MVP全体の基準は[MVP要件定義](docs/product-requirements.md)にあります。
 
 ## Setup
 
 ```bash
 cd app/data_profile
 UV_CACHE_DIR=.uv-cache uv sync
+UV_CACHE_DIR=.uv-cache uv run data-profile build-sample
 
 cd web
 npm install
@@ -50,4 +51,4 @@ npm run build
 
 ## Next slice
 
-fixture JSONをParquetへ置き換え、DuckDB経由で同じAPI契約を返します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
+dbt Coreの`manifest.json`と`catalog.json`を読み込み、model / source metadataを現在のcatalogへ統合します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
