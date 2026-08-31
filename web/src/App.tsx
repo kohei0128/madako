@@ -65,6 +65,15 @@ function isTemporal(profiles: ProfileSlice[]): boolean {
   return profiles.length > 0 && profiles.every((profile) => /^\d{4}-\d{2}-\d{2}$/.test(profile.dimension_value ?? ""));
 }
 
+function heatIntensity(rate: number): number {
+  if (rate <= 0) return 0;
+  return Math.min(1, 0.18 + Math.sqrt(rate) * 1.4);
+}
+
+function HeatLegend({ label }: { label: string }) {
+  return <div className="heat-heading"><span>{label}</span><span className="heat-legend"><small>Low</small><i /><i /><i /><i /><small>High</small></span></div>;
+}
+
 function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; filter: TypeFilter; range: TrendRange }) {
   const ordered = [...profiles].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? ""));
   const visibleProfiles = range === "all" ? ordered : ordered.slice(-range);
@@ -74,10 +83,9 @@ function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; 
   const columns = latest.columns.filter((column) => matchesType(column, filter));
 
   return <div className="table-wrap trend-table"><table>
-    <thead><tr><th>Column</th><th>Type</th><th>NULL rate trend</th><th>Latest</th><th>Change</th><th>Latest metrics</th></tr></thead>
+    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label="NULL rate by date" /></th><th>Latest</th><th>Latest metrics</th></tr></thead>
     <tbody>{columns.map((column) => {
       const previousColumn = previous?.columns.find((item) => item.name === column.name);
-      const change = previousColumn ? (column.null_rate - previousColumn.null_rate) * 100 : null;
       return <tr key={column.name}>
         <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>
         <td><code>{column.data_type}</code></td>
@@ -85,34 +93,55 @@ function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; 
           {visibleProfiles.map((profile) => {
             const point = profile.columns.find((item) => item.name === column.name);
             const rate = point?.null_rate ?? 0;
-            return <span key={profile.dimension_value} className={point ? "heat-cell" : "heat-cell missing"}
-              style={{ "--heat": String(Math.max(.05, rate)) } as React.CSSProperties}
+            return <span key={profile.dimension_value} className={point ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
+              style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
               title={`${profile.dimension_value}: ${point ? `${(rate * 100).toFixed(1)}% NULL (${point.null_count.toLocaleString()})` : "No data"}`} />;
           })}
         </div><small className="trend-dates"><span>{visibleProfiles[0]?.dimension_value}</span><span>{latest.dimension_value}</span></small></td>
-        <td className="latest-value">{(column.null_rate * 100).toFixed(1)}%<small>{column.null_count.toLocaleString()} nulls</small></td>
-        <td className={`change ${change !== null && change > 0 ? "worse" : change !== null && change < 0 ? "better" : ""}`}>
-          {change === null ? "—" : `${change > 0 ? "+" : ""}${change.toFixed(1)}pt`}
-        </td>
+        <td className="latest-value">{(column.null_rate * 100).toFixed(1)}%<small>{column.null_count.toLocaleString()} nulls</small><small>{previousColumn ? `prev. ${(previousColumn.null_rate * 100).toFixed(1)}%` : ""}</small></td>
         <td><CompactMetrics column={column} slice={latest} /></td>
       </tr>;
     })}</tbody>
   </table></div>;
 }
 
-function CategoricalTable({ profiles, filter }: { profiles: ProfileSlice[]; filter: TypeFilter }) {
+function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSlice[]; columnName: string }) {
+  const points = profiles.flatMap((profile) => {
+    const column = profile.columns.find((item) => item.name === columnName);
+    return column ? [{ column, profile }] : [];
+  });
+  const first = points[0]?.column;
+  if (!first) return <>—</>;
+  if (first.data_type === "STRING") {
+    const values = points.flatMap(({ column }) => column.distinct_count === null ? [] : [column.distinct_count]);
+    return <PairMetric leftLabel="Min distinct" leftValue={Math.min(...values).toLocaleString()} rightLabel="Max distinct" rightValue={Math.max(...values).toLocaleString()} />;
+  }
+  if (first.data_type === "BOOL") {
+    const rates = points.map(({ column, profile }) => profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0);
+    return <PairMetric leftLabel="Min true" leftValue={`${Math.min(...rates).toFixed(1)}%`} rightLabel="Max true" rightValue={`${Math.max(...rates).toFixed(1)}%`} />;
+  }
+  const minimums = points.flatMap(({ column }) => column.min_value === null ? [] : [column.min_value]);
+  const maximums = points.flatMap(({ column }) => column.max_value === null ? [] : [column.max_value]);
+  const min = first.data_type === "DATE" ? minimums.map(String).sort()[0] : Math.min(...minimums.map(Number));
+  const max = first.data_type === "DATE" ? maximums.map(String).sort().at(-1) : Math.max(...maximums.map(Number));
+  return <PairMetric leftLabel="Min" leftValue={String(min ?? "—")} rightLabel="Max" rightValue={String(max ?? "—")} />;
+}
+
+function CategoricalTable({ profiles, filter, dimensionName }: { profiles: ProfileSlice[]; filter: TypeFilter; dimensionName: string }) {
   const columns = profiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
-  return <div className="table-wrap comparison-table"><table>
-    <thead><tr><th>Column</th><th>Type</th>{profiles.map((profile) => <th key={profile.dimension_value}>{profile.dimension_value}</th>)}</tr></thead>
+  return <div className="table-wrap dimension-table"><table>
+    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`NULL rate by ${dimensionName}`} /></th><th>Metrics across values</th></tr></thead>
     <tbody>{columns.map((baseColumn) => <tr key={baseColumn.name}>
       <td className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></td>
       <td><code>{baseColumn.data_type}</code></td>
-      {profiles.map((profile) => {
+      <td><div className="heatmap categorical-heatmap">{profiles.map((profile) => {
         const column = profile.columns.find((item) => item.name === baseColumn.name);
-        return <td key={profile.dimension_value}>{column ? <div className="comparison-cell">
-          <NullMetric column={column} /><CompactMetrics column={column} slice={profile} />
-        </div> : <span className="missing-value">No data</span>}</td>;
-      })}
+        const rate = column?.null_rate ?? 0;
+        return <span key={profile.dimension_value} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
+          style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
+          title={`${dimensionName} = ${profile.dimension_value}: ${column ? `${(rate * 100).toFixed(1)}% NULL (${column.null_count.toLocaleString()})` : "No data"}`} />;
+      })}</div><small className="dimension-count">{profiles.length} values · hover to inspect</small></td>
+      <td><DimensionMetricSummary profiles={profiles} columnName={baseColumn.name} /></td>
     </tr>)}</tbody>
   </table></div>;
 }
@@ -136,6 +165,7 @@ function App() {
 
   const model = models.find((item) => item.name === selectedModel);
   const slice = model?.profiles[sliceIndex];
+  const overallSlice = model?.profiles.find((profile) => profile.dimension_name === null);
   const dimensionNames = useMemo(() => Array.from(new Set(
     model?.profiles.flatMap((profile) => profile.dimension_name ? [profile.dimension_name] : []) ?? [],
   )), [model]);
@@ -188,10 +218,11 @@ function App() {
       {!model && !error && <div className="notice">Loading profile…</div>}
       {model && slice && <>
         <header>
-          <div className="eyebrow">{model.database} / {model.schema}</div>
           <div className="title-row"><h1>{model.name}</h1><span className="pill">{model.materialization}</span></div>
           <p>{model.description}</p>
-          <div className="metadata"><span><b>{summarySlice!.record_count.toLocaleString()}</b> {temporalDimension ? `rows in latest partition (${summarySlice!.dimension_value})` : "rows"}</span><span>Profiled {new Date(model.profiled_at).toLocaleString()}</span><span>{model.tests.length} dbt tests</span></div>
+          <div className="eyebrow">{model.database} / {model.schema}</div>
+          <div className="metadata"><span><b>{(overallSlice?.record_count ?? slice.record_count).toLocaleString()}</b> total rows</span><span>Profiled {new Date(model.profiled_at).toLocaleString()}</span><span>{model.tests.length} dbt tests</span></div>
+          {temporalDimension && latestDimensionSlice && <div className="latest-partition"><span>Latest partition</span><strong>{latestDimensionSlice.dimension_value}</strong><small>{latestDimensionSlice.record_count.toLocaleString()} rows</small></div>}
         </header>
 
         <div className="profile-by">
@@ -216,7 +247,7 @@ function App() {
           {visibleColumns.length === 0 && <div className="empty-state">No columns match this type.</div>}
         </div>}
         {temporalDimension && <TemporalTable profiles={dimensionSlices} filter={typeFilter} range={trendRange} />}
-        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} />}
+        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} />}
       </>}
     </section>
   </main>;

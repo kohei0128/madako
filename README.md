@@ -2,7 +2,9 @@
 
 dbt metadataと実データのprofiling結果を同じ画面で確認する、ローカルファーストのデータカタログです。
 
-現在は最小の縦切りとして、fixtureに保存した1モデルのprofileをAPIから取得し、ExplorerとTable Detailに表示します。BigQuery、dbt artifacts、Parquet、DuckDBとの接続はまだ含みません。
+現在は最初のvertical sliceとして、fixtureに保存した1モデルのOverall / Dimension profileをAPIから取得し、Explorerと高密度なColumns一覧に表示します。DATE dimensionのpartition trendとcategorical dimensionのvalue比較にも対応しています。
+
+BigQuery、dbt artifacts、Parquet、DuckDBとの接続はまだ含みません。現在の進捗、実装で具体化した方針、次の開発段階は[開発状況と現在の方針](docs/development-status.md)を参照してください。MVP全体の基準は[MVP要件定義](docs/product-requirements.md)にあります。
 
 ## Setup
 
@@ -48,5 +50,4 @@ npm run build
 
 ## Next slice
 
-fixture JSONをParquetへ置き換え、DuckDB経由で同じAPI契約を返します。その後、dbt artifactsのmetadataを統合し、最後にBigQueryでprofileを生成するCLIを追加します。
-
+fixture JSONをParquetへ置き換え、DuckDB経由で同じAPI契約を返します。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
