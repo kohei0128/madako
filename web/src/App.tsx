@@ -89,7 +89,11 @@ function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; 
       return <tr key={column.name}>
         <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>
         <td><code>{column.data_type}</code></td>
-        <td><div className="heatmap" aria-label={`NULL rate trend for ${column.name}`}>
+        <td><div
+          className="heatmap"
+          aria-label={`NULL rate trend for ${column.name}`}
+          style={{ "--point-count": visibleProfiles.length } as React.CSSProperties}
+        >
           {visibleProfiles.map((profile) => {
             const point = profile.columns.find((item) => item.name === column.name);
             const rate = point?.null_rate ?? 0;
@@ -134,7 +138,10 @@ function CategoricalTable({ profiles, filter, dimensionName }: { profiles: Profi
     <tbody>{columns.map((baseColumn) => <tr key={baseColumn.name}>
       <td className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></td>
       <td><code>{baseColumn.data_type}</code></td>
-      <td><div className="heatmap categorical-heatmap">{profiles.map((profile) => {
+      <td><div
+        className="heatmap categorical-heatmap"
+        style={{ "--point-count": profiles.length } as React.CSSProperties}
+      >{profiles.map((profile) => {
         const column = profile.columns.find((item) => item.name === baseColumn.name);
         const rate = column?.null_rate ?? 0;
         return <span key={profile.dimension_value} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}

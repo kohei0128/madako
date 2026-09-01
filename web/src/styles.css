@@ -92,8 +92,8 @@ code { color: #21684e; background: #edf6f2; padding: 2px 5px; border-radius: 3px
 .heat-legend i:nth-of-type(2) { background: #efc3b1; }
 .heat-legend i:nth-of-type(3) { background: #df8e6b; }
 .heat-legend i:nth-of-type(4) { background: #bf4f2d; }
-.heatmap { display: flex; align-items: center; gap: 2px; width: 100%; height: 14px; }
-.heat-cell { flex: 1 1 4px; min-width: 3px; max-width: 14px; height: 12px; background: rgba(205, 73, 34, var(--heat)); border-radius: 1px; }
+.heatmap { display: grid; grid-template-columns: repeat(var(--point-count), minmax(0, 1fr)); align-items: center; gap: 1px; width: 100%; height: 14px; overflow: hidden; }
+.heat-cell { width: 100%; min-width: 0; height: 12px; background: rgba(205, 73, 34, var(--heat)); border-radius: 1px; }
 .heat-cell.zero { background: #edf1ef; }
 .heat-cell:last-child { outline: 1px solid #355f50; outline-offset: 1px; }
 .heat-cell.missing { background: repeating-linear-gradient(135deg, #e5eae8, #e5eae8 2px, #f7f9f8 2px, #f7f9f8 4px); border-bottom: 0; }
