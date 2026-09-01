@@ -161,12 +161,17 @@ function App() {
   const [trendRange, setTrendRange] = useState<TrendRange>(30);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
+  const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetch("/api/models").then((response) => {
       if (!response.ok) throw new Error("Could not load profiles");
       return response.json() as Promise<ModelProfile[]>;
-    }).then((data) => { setModels(data); setSelectedModel(data[0]?.name ?? ""); })
+    }).then((data) => {
+      setModels(data);
+      setSelectedModel(data[0]?.name ?? "");
+      if (data[0]) setExpandedDatasets(new Set([`${data[0].database}/${data[0].schema}`]));
+    })
       .catch((reason: Error) => setError(reason.message));
   }, []);
 
@@ -184,13 +189,35 @@ function App() {
     : undefined;
   const summarySlice = latestDimensionSlice ?? slice;
   const visibleColumns = summarySlice?.columns.filter((column) => matchesType(column, typeFilter)) ?? [];
-  const filteredModels = useMemo(
-    () => models.filter((item) => item.name.toLowerCase().includes(query.toLowerCase())), [models, query],
-  );
+  const filteredModels = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return models;
+    return models.filter((item) => [item.name, item.schema, item.database, item.resource_type]
+      .some((value) => value.toLowerCase().includes(normalizedQuery)));
+  }, [models, query]);
+  const explorerGroups = useMemo(() => {
+    const projects = new Map<string, Map<string, ModelProfile[]>>();
+    for (const item of filteredModels) {
+      const datasets = projects.get(item.database) ?? new Map<string, ModelProfile[]>();
+      const relations = datasets.get(item.schema) ?? [];
+      relations.push(item);
+      datasets.set(item.schema, relations);
+      projects.set(item.database, datasets);
+    }
+    return projects;
+  }, [filteredModels]);
 
   function selectDimension(dimensionName: string | null) {
     const index = model?.profiles.findIndex((profile) => profile.dimension_name === dimensionName) ?? -1;
     if (index >= 0) setSliceIndex(index);
+  }
+
+  function toggleDataset(key: string) {
+    setExpandedDatasets((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   }
 
   function renderHeaders() {
@@ -215,9 +242,21 @@ function App() {
       <div className="brand">data profile <span>alpha</span></div>
       <label className="search"><span>Search models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model name" /></label>
       <div className="tree-label">Explorer</div>
-      {filteredModels.map((item) => <button className={`model-item ${item.name === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.name); setSliceIndex(0); setTypeFilter("all"); }}>
-        <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.database} / {item.schema} · {item.resource_type}</small>{item.name}</span>
-      </button>)}
+      {[...explorerGroups].sort(([left], [right]) => left.localeCompare(right)).map(([database, datasets]) => <div className="project-group" key={database}>
+        <div className="project-name"><span>◆</span>{database}</div>
+        {[...datasets].sort(([left], [right]) => left.localeCompare(right)).map(([schema, relations]) => {
+          const datasetKey = `${database}/${schema}`;
+          const isOpen = query.trim().length > 0 || expandedDatasets.has(datasetKey);
+          return <div className="dataset-group" key={datasetKey}>
+            <button className={`dataset-item ${isOpen ? "open" : ""}`} onClick={() => toggleDataset(datasetKey)} aria-expanded={isOpen}>
+              <span className="chevron">›</span><span className="dataset-icon">▤</span><span>{schema}</span><small>{relations.length}</small>
+            </button>
+            {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.name === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.name); setSliceIndex(0); setTypeFilter("all"); }}>
+              <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.resource_type}</small>{item.name}</span>
+            </button>)}</div>}
+          </div>;
+        })}
+      </div>)}
     </aside>
 
     <section className="detail">
