@@ -36,6 +36,8 @@
 - 設定駆動のSQL生成とBigQuery dry runを行う`plan`コマンド
 - plan結果をそのまま実行する設定駆動の複数relation `profile`コマンド
 - dimension未指定時のOverall-only profile
+- `DataProfile.plan()` / `run()` / `profile()`を中心とする公開Python API
+- CLIのplan・profile処理を公開Python APIへ統合
 - artifact再import時の既存profile引き継ぎ
 - APIテストとWebのproduction build
 
@@ -280,13 +282,13 @@ profile CLI（READY項目の実行・保存）
 
 ## ライブラリ化に向けた境界
 
-今回追加した`create_profile_plan`はCLIに依存せず、`ModelProfile`と推定処理量を返す関数を受け取って計画を返す。このため、artifact取り込み、計画、実行、保存、APIを段階的に分離できる土台ができた。
+`DataProfile`を公開入口として追加し、CLIも同じ`plan()`と`run()`を利用する。`profile()`は両方を一括実行するshortcutである。内部の`create_profile_plan`はCLIに依存せず、推定器とquery runnerを差し替えられるため、artifact取り込み、計画、実行、保存を独立してテストできる。
 
 配布可能なライブラリにする前に、次を整備する。
 
 - `bq` subprocessをBigQuery adapter interfaceの背後へ置く
 - plan結果を受け取る共通executorを作り、CLIを薄い呼び出し層にする
-- public Python APIと例外契約を定義する
+- public Python APIの戻り値と例外契約を実利用に基づいて安定させる
 - storage / config schemaのversioningとmigration方針を決める
 - package metadata、利用者向け設定、BigQuery依存をoptional dependencyとして整理する
 

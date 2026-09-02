@@ -82,6 +82,59 @@ UV_CACHE_DIR=.uv-cache uv run data-profile profile \
 
 コマンドは全対象を最初にdry runし、推定処理量がいずれかの`max_bytes_billed`を超える場合は実queryを1件も実行しません。全項目が`READY`の場合だけ順次実行し、すべて成功した後にParquetを一度更新します。
 
+## Python API
+
+CLIと同じ処理は、公開Python APIからも実行できます。`from_dbt_project()`は既存の`target/manifest.json`と、存在すれば`catalog.json`をstorageへ取り込みます。`dbt parse`自体は暗黙には実行しません。
+
+```python
+from data_profile import DataProfile
+
+app = DataProfile.from_dbt_project(
+    project_dir="../../dbt/tsubo",
+    storage_dir="fixtures/tsubo",
+)
+
+result = app.profile(select="stg_zaim_transactions")
+print(result.profiled_models)
+```
+
+実query前に内容を確認する場合は、planとrunを分けます。
+
+```python
+plan = app.plan(select="stg_zaim_transactions")
+
+for item in plan.items:
+    print(item.model.name, item.dimension, item.estimated_bytes, item.executable)
+
+if plan.executable:
+    result = app.run(plan)
+```
+
+既にimport済みのstorageを利用する場合は、`DataProfile.from_storage("fixtures/tsubo")`を使います。現時点の公開入口は`DataProfile`、`ProfilePlan`、`ProfileResult`、`ProfilingError`です。
+
+### tsubo用サンプルスクリプト
+
+既定では`stg_zaim_transactions`のdry-runだけを行います。
+
+```bash
+cd app/data_profile
+UV_CACHE_DIR=.uv-cache uv run python examples/profile_tsubo.py
+```
+
+表示された対象と推定処理量を確認し、実際にprofileを生成・保存する場合は`--execute`を付けます。
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python examples/profile_tsubo.py --execute
+```
+
+別の設定済みmodelを指定する場合:
+
+```bash
+UV_CACHE_DIR=.uv-cache uv run python examples/profile_tsubo.py \
+  --select mart_pl_transactions \
+  --execute
+```
+
 ## Test
 
 ```bash

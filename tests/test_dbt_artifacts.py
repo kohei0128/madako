@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from data_profile import DataProfile
 from data_profile.dbt_artifacts import ArtifactError, read_dbt_artifacts
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.storage import build_dbt_artifact_storage
@@ -38,6 +39,22 @@ def test_artifact_storage_round_trip(tmp_path: Path) -> None:
     assert len(resources) == 14
     assert all(resource.profiles == [] for resource in resources)
     assert repository.get_model("stg_zaim_transactions").columns[10].data_type == "INT64"
+
+
+def test_public_api_loads_dbt_project_and_builds_plan(tmp_path: Path) -> None:
+    with pytest.warns(UserWarning):
+        app = DataProfile.from_dbt_project(
+            TSUBO_PROJECT,
+            tmp_path,
+            estimator=lambda *_: 44_762,
+        )
+
+    plan = app.plan(select="stg_zaim_transactions")
+
+    assert len(app.models()) == 14
+    assert len(plan.items) == 1
+    assert plan.items[0].dimension == "as_of_date"
+    assert plan.estimated_bytes == 44_762
 
 
 def test_missing_manifest_has_clear_error(tmp_path: Path) -> None:

@@ -3,10 +3,25 @@ from pathlib import Path
 
 import uvicorn
 
-from data_profile.planning import create_profile_plan, execute_profile_plan
+from data_profile.api import DataProfile, ProfilePlan
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
-from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, build_parquet_fixture, write_profile_storage
+from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, build_parquet_fixture
+
+
+def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
+    for item in plan.items:
+        status = "READY" if item.executable else "BLOCKED"
+        print(f"[{status}] {item.model.unique_id}")
+        print(f"  Relation: {item.model.relation_name}")
+        print(f"  Dimension: {item.dimension or 'Overall'}")
+        print(f"  Estimated bytes: {item.estimated_bytes:,}")
+        print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
+        if item.skipped_columns:
+            print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
+        if show_sql:
+            print("  SQL:")
+            print(item.sql)
 
 
 def main() -> None:
@@ -62,46 +77,22 @@ def main() -> None:
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
     elif args.command == "plan":
-        repository = DuckDBProfileRepository(
-            args.storage_dir / MODELS_FILENAME,
-            args.storage_dir / PROFILES_FILENAME,
-        )
-        items = create_profile_plan(
-            repository.list_models(),
-            selector=args.select,
+        data_profile = DataProfile.from_storage(args.storage_dir)
+        plan_result = data_profile.plan(
+            select=args.select,
             project=args.project,
             location=args.location,
         )
-        for item in items:
-            status = "READY" if item.executable else "BLOCKED"
-            print(f"[{status}] {item.model.unique_id}")
-            print(f"  Relation: {item.model.relation_name}")
-            print(f"  Dimension: {item.dimension or 'Overall'}")
-            print(f"  Estimated bytes: {item.estimated_bytes:,}")
-            print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
-            if item.skipped_columns:
-                print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
-            if args.show_sql:
-                print("  SQL:")
-                print(item.sql)
+        _print_plan(plan_result, show_sql=args.show_sql)
     elif args.command == "profile":
-        repository = DuckDBProfileRepository(
-            args.storage_dir / MODELS_FILENAME,
-            args.storage_dir / PROFILES_FILENAME,
-        )
-        models = repository.list_models()
-        items = create_profile_plan(
-            models,
-            selector=args.select,
+        data_profile = DataProfile.from_storage(args.storage_dir)
+        plan_result = data_profile.plan(
+            select=args.select,
             project=args.project,
             location=args.location,
         )
-        for item in items:
-            status = "READY" if item.executable else "BLOCKED"
-            print(f"[{status}] {item.model.unique_id} / {item.dimension or 'Overall'}")
-            print(f"  Estimated bytes: {item.estimated_bytes:,}")
-            print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
-        updated_models = execute_profile_plan(models, items)
-        write_profile_storage(updated_models, args.storage_dir)
-        print(f"Executed profile items: {len(items):,}")
-        print(f"Updated storage: {args.storage_dir}")
+        _print_plan(plan_result)
+        result = data_profile.run(plan_result)
+        print(f"Profiled models: {', '.join(result.profiled_models)}")
+        print(f"Executed profile items: {len(result.plan.items):,}")
+        print(f"Updated storage: {data_profile.storage_dir}")
