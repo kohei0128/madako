@@ -12,10 +12,31 @@ class ProfilingError(Exception):
     pass
 
 
-def generate_profile_sql(model: ModelProfile, dimension: str) -> str:
+def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> str:
     supported = [column for column in model.columns if column.data_type in SUPPORTED_TYPES]
     if not supported:
         raise ProfilingError(f"no supported columns found for {model.name}")
+    if dimension is None:
+        overall_metrics = _aggregate_expressions(supported)
+        overall_structs = _metric_structs(supported)
+        relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
+        return f"""
+WITH overall_agg AS (
+  SELECT
+    COUNT(*) AS record_count,
+    {overall_metrics}
+  FROM {relation}
+)
+SELECT
+  CAST(NULL AS STRING) AS dimension_name,
+  CAST(NULL AS STRING) AS dimension_value,
+  record_count,
+  metric.*
+FROM overall_agg
+CROSS JOIN UNNEST([{overall_structs}]) AS metric
+ORDER BY column_order
+""".strip()
+
     dimension_column = next((column for column in model.columns if column.name == dimension), None)
     if dimension_column is None:
         raise ProfilingError(f"dimension column not found: {dimension}")

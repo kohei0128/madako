@@ -34,6 +34,8 @@
 - Overall＋DATE dimension profileのParquet統合
 - dbt `meta.profiling`による対象・dimension・処理量上限の設定
 - 設定駆動のSQL生成とBigQuery dry runを行う`plan`コマンド
+- plan結果をそのまま実行する設定駆動の複数relation `profile`コマンド
+- dimension未指定時のOverall-only profile
 - artifact再import時の既存profile引き継ぎ
 - APIテストとWebのproduction build
 
@@ -264,7 +266,7 @@ dbt設定から対象とdimensionを解決し、実行前にSQLとcostを確認�
 4. `data-profile plan`は実queryを実行せずSQL、対象、estimated bytesを表示する
 5. artifact再import時にも既存profileを`unique_id`で引き継げる
 
-次は、`profile`をplan結果の実行処理に統合する。
+`profile`のplan結果への統合も完了した。`--select`を省略するとenabledな全relation、指定すると一致するrelationだけを対象にする。全項目をdry runしてから、上限内の場合だけ順次実行し、成功後にstorageを一度書き換える。
 
 ```text
 create_profile_plan（設定・selection・SQL・上限）
@@ -274,7 +276,7 @@ plan CLI（dry runのみ）
 profile CLI（READY項目の実行・保存）
 ```
 
-その後、複数relationの逐次実行、relationごとの失敗分離、atomicなstorage置換を追加する。
+次は、relationごとの実行結果と失敗理由を構造化し、atomicなstorage置換を追加する。その後、BigQuery adapter interfaceとpublic Python APIを安定させる。
 
 ## ライブラリ化に向けた境界
 

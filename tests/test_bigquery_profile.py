@@ -50,3 +50,11 @@ def test_reconstructs_profile_slices() -> None:
     assert profiles[0].dimension_name is None
     assert profiles[0].columns[0].min_value == 2
     assert profiles[1].dimension_value == "2026-09-01"
+
+
+def test_generates_overall_only_sql_without_dimension() -> None:
+    sql = generate_profile_sql(model())
+
+    assert "overall_agg" in sql
+    assert "dimension_agg" not in sql
+    assert "CAST(NULL AS STRING) AS dimension_name" in sql

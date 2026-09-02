@@ -69,19 +69,18 @@ UV_CACHE_DIR=.uv-cache uv run data-profile plan \
   --location asia-northeast1
 ```
 
-`stg_zaim_transactions`だけをprofilingする場合:
+設定済みの全relationをprofilingする場合:
 
 ```bash
 UV_CACHE_DIR=.uv-cache uv run data-profile profile \
   --storage-dir fixtures/tsubo \
-  --select stg_zaim_transactions \
-  --dimension as_of_date \
   --project northern-bliss-362623 \
-  --location asia-northeast1 \
-  --max-bytes-billed 1000000000
+  --location asia-northeast1
 ```
 
-コマンドは最初にdry runを実行し、推定処理量が`--max-bytes-billed`を超える場合は実queryを実行しません。現在は1 relationと1つのDATE dimensionだけを明示的に指定するpilot実装です。
+1 relationだけを実行する場合は`--select stg_zaim_transactions`を追加します。対象、dimensions、処理量上限は各resourceの`meta.profiling`から取得します。`dimensions`が空の場合はOverallだけを生成します。
+
+コマンドは全対象を最初にdry runし、推定処理量がいずれかの`max_bytes_billed`を超える場合は実queryを1件も実行しません。全項目が`READY`の場合だけ順次実行し、すべて成功した後にParquetを一度更新します。
 
 ## Test
 
@@ -101,4 +100,4 @@ npm run build
 
 ## Next slice
 
-`profile`コマンドを`plan`と同じ設定・SQL・上限判定から実行するよう統合し、設定駆動の複数relation実行へ進めます。完了条件とその後の順序は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。
+設定駆動の複数relation実行まで対応しました。次はrelationごとの失敗結果を明確にし、storageのatomic replacementとwarehouse adapter境界を整備します。詳細は[次の開発段階](docs/development-status.md#次の開発段階)に記載しています。

@@ -3,8 +3,7 @@ from pathlib import Path
 
 import uvicorn
 
-from data_profile.bigquery_profile import ProfilingError, apply_profile, dry_run, execute_profile, generate_profile_sql
-from data_profile.planning import create_profile_plan
+from data_profile.planning import create_profile_plan, execute_profile_plan
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, build_parquet_fixture, write_profile_storage
@@ -41,13 +40,11 @@ def main() -> None:
     plan.add_argument("--project")
     plan.add_argument("--location", default="asia-northeast1")
     plan.add_argument("--show-sql", action="store_true")
-    profile = subparsers.add_parser("profile", help="Profile one BigQuery relation and update Parquet storage")
+    profile = subparsers.add_parser("profile", help="Execute configured profiling and update Parquet storage")
     profile.add_argument("--storage-dir", type=Path, required=True)
-    profile.add_argument("--select", required=True)
-    profile.add_argument("--dimension", required=True)
-    profile.add_argument("--project", required=True)
+    profile.add_argument("--select")
+    profile.add_argument("--project")
     profile.add_argument("--location", default="asia-northeast1")
-    profile.add_argument("--max-bytes-billed", type=int, default=1_000_000_000)
     args = parser.parse_args()
 
     if args.command == "serve":
@@ -79,7 +76,7 @@ def main() -> None:
             status = "READY" if item.executable else "BLOCKED"
             print(f"[{status}] {item.model.unique_id}")
             print(f"  Relation: {item.model.relation_name}")
-            print(f"  Dimension: {item.dimension}")
+            print(f"  Dimension: {item.dimension or 'Overall'}")
             print(f"  Estimated bytes: {item.estimated_bytes:,}")
             print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
             if item.skipped_columns:
@@ -93,21 +90,18 @@ def main() -> None:
             args.storage_dir / PROFILES_FILENAME,
         )
         models = repository.list_models()
-        selected = [model for model in models if model.name == args.select]
-        if len(selected) != 1:
-            parser.error(f"--select must match exactly one relation, found {len(selected)}")
-        model = selected[0]
-        sql = generate_profile_sql(model, args.dimension)
-        estimated_bytes = dry_run(sql, args.project, args.location)
-        print(f"Relation: {model.relation_name}")
-        print(f"Dimension: {args.dimension}")
-        print(f"Estimated bytes: {estimated_bytes:,}")
-        print(f"Maximum bytes billed: {args.max_bytes_billed:,}")
-        if estimated_bytes > args.max_bytes_billed:
-            raise ProfilingError("estimated bytes exceed --max-bytes-billed; query was not executed")
-        rows = execute_profile(sql, args.project, args.location, args.max_bytes_billed)
-        profiled_model = apply_profile(model, rows)
-        updated_models = [profiled_model if item.unique_id == model.unique_id else item for item in models]
+        items = create_profile_plan(
+            models,
+            selector=args.select,
+            project=args.project,
+            location=args.location,
+        )
+        for item in items:
+            status = "READY" if item.executable else "BLOCKED"
+            print(f"[{status}] {item.model.unique_id} / {item.dimension or 'Overall'}")
+            print(f"  Estimated bytes: {item.estimated_bytes:,}")
+            print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
+        updated_models = execute_profile_plan(models, items)
         write_profile_storage(updated_models, args.storage_dir)
-        print(f"Profile rows: {len(rows):,}")
+        print(f"Executed profile items: {len(items):,}")
         print(f"Updated storage: {args.storage_dir}")
