@@ -38,6 +38,12 @@ class ColumnMetadata(BaseModel):
     description: str = ""
 
 
+class ProfilingConfig(BaseModel):
+    enabled: bool = False
+    dimensions: list[str] = Field(default_factory=list)
+    max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
+
+
 class ModelProfile(BaseModel):
     unique_id: str = ""
     resource_type: Literal["model", "source"] = "model"
@@ -50,5 +56,6 @@ class ModelProfile(BaseModel):
     tags: list[str] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
     columns: list[ColumnMetadata] = Field(default_factory=list)
+    profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
     profiled_at: datetime | None = None
     profiles: list[ProfileSlice] = Field(default_factory=list)

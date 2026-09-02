@@ -39,11 +39,12 @@ class DuckDBProfileRepository:
 
     def list_models(self) -> list[ModelProfile]:
         with duckdb.connect() as connection:
+            profiling_expression = self._profiling_expression(connection)
             rows = connection.execute(
-                """
+                f"""
                 SELECT unique_id, resource_type, model_name, database_name, schema_name,
                        relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, profiled_at
+                       columns_json, {profiling_expression}, profiled_at
                 FROM read_parquet(?)
                 ORDER BY model_name
                 """,
@@ -53,11 +54,12 @@ class DuckDBProfileRepository:
 
     def get_model(self, model_name: str) -> ModelProfile:
         with duckdb.connect() as connection:
+            profiling_expression = self._profiling_expression(connection)
             row = connection.execute(
-                """
+                f"""
                 SELECT unique_id, resource_type, model_name, database_name, schema_name,
                        relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, profiled_at
+                       columns_json, {profiling_expression}, profiled_at
                 FROM read_parquet(?)
                 WHERE model_name = ?
                 """,
@@ -66,6 +68,14 @@ class DuckDBProfileRepository:
         if row is None:
             raise ProfileNotFoundError(model_name)
         return self._build_model(row)
+
+    def _profiling_expression(self, connection: duckdb.DuckDBPyConnection) -> str:
+        columns = connection.execute(
+            "DESCRIBE SELECT * FROM read_parquet(?)",
+            [str(self.models_path)],
+        ).fetchall()
+        names = {column[0] for column in columns}
+        return "profiling_json" if "profiling_json" in names else "'{}' AS profiling_json"
 
     def _build_model(self, row: tuple) -> ModelProfile:
         model_name = row[2]
@@ -130,7 +140,8 @@ class DuckDBProfileRepository:
             tags=json.loads(row[8]),
             tests=json.loads(row[9]),
             columns=[ColumnMetadata.model_validate(column) for column in json.loads(row[10])],
-            profiled_at=row[11],
+            profiling=json.loads(row[11]),
+            profiled_at=row[12],
             profiles=slices,
         )
 

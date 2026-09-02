@@ -27,6 +27,7 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | tags_json | VARCHAR | No | tagsのJSON array |
 | tests_json | VARCHAR | No | dbt testsのJSON array |
 | columns_json | VARCHAR | No | profile未生成時にも表示するcolumn metadata |
+| profiling_json | VARCHAR | No | dbtで解決済みの`meta.profiling`設定 |
 | profiled_at | VARCHAR | Yes | profile実行日時のISO 8601文字列 |
 
 `profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。

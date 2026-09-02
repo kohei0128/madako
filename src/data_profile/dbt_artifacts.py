@@ -55,6 +55,7 @@ def _to_model(node: dict, catalog_node: dict | None, tests_by_node: dict[str, li
     schema = node.get("schema") or ""
     relation_name = f"`{database}.{schema}.{identifier}`" if database and schema else identifier
     config = node.get("config", {})
+    profiling = config.get("meta", {}).get("profiling", {})
     return ModelProfile(
         unique_id=node["unique_id"],
         resource_type=resource_type,
@@ -67,6 +68,7 @@ def _to_model(node: dict, catalog_node: dict | None, tests_by_node: dict[str, li
         tags=config.get("tags", node.get("tags", [])),
         tests=tests_by_node.get(node["unique_id"], []),
         columns=columns,
+        profiling=profiling,
         profiles=[],
     )
 

@@ -6,7 +6,7 @@ import duckdb
 
 from data_profile.dbt_artifacts import read_dbt_artifacts
 from data_profile.models import ColumnMetadata, ModelProfile
-from data_profile.repository import JsonProfileRepository
+from data_profile.repository import DuckDBProfileRepository, JsonProfileRepository
 
 
 MODELS_FILENAME = "models.parquet"
@@ -19,7 +19,18 @@ def build_parquet_fixture(source_path: Path, output_dir: Path) -> tuple[Path, Pa
 
 
 def build_dbt_artifact_storage(project_dir: Path, output_dir: Path) -> tuple[Path, Path]:
-    return write_profile_storage(read_dbt_artifacts(project_dir), output_dir)
+    models = read_dbt_artifacts(project_dir)
+    models_path = output_dir / MODELS_FILENAME
+    profiles_path = output_dir / PROFILES_FILENAME
+    if models_path.exists() and profiles_path.exists():
+        existing = {model.unique_id: model for model in DuckDBProfileRepository(models_path, profiles_path).list_models()}
+        models = [
+            model.model_copy(update={"profiles": previous.profiles, "profiled_at": previous.profiled_at})
+            if (previous := existing.get(model.unique_id)) and previous.profiles
+            else model
+            for model in models
+        ]
+    return write_profile_storage(models, output_dir)
 
 
 def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple[Path, Path]:
@@ -43,6 +54,7 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
             json.dumps(model.tags),
             json.dumps(model.tests),
             json.dumps([column.model_dump() for column in columns]),
+            model.profiling.model_dump_json(),
             model.profiled_at.isoformat() if model.profiled_at else None,
         ))
         for profile_order, profile in enumerate(model.profiles):
@@ -79,10 +91,11 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
                 tags_json VARCHAR NOT NULL,
                 tests_json VARCHAR NOT NULL,
                 columns_json VARCHAR NOT NULL,
+                profiling_json VARCHAR NOT NULL,
                 profiled_at VARCHAR
             )
         """)
-        connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
+        connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
         connection.execute("""
             CREATE TABLE column_profiles (
                 model_name VARCHAR NOT NULL,

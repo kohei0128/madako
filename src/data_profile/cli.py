@@ -4,6 +4,7 @@ from pathlib import Path
 import uvicorn
 
 from data_profile.bigquery_profile import ProfilingError, apply_profile, dry_run, execute_profile, generate_profile_sql
+from data_profile.planning import create_profile_plan
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, build_parquet_fixture, write_profile_storage
@@ -34,6 +35,12 @@ def main() -> None:
     import_dbt = subparsers.add_parser("import-dbt", help="Import dbt artifacts into Parquet storage")
     import_dbt.add_argument("--project-dir", type=Path, required=True)
     import_dbt.add_argument("--output-dir", type=Path, required=True)
+    plan = subparsers.add_parser("plan", help="Resolve profiling config and dry-run generated SQL")
+    plan.add_argument("--storage-dir", type=Path, required=True)
+    plan.add_argument("--select")
+    plan.add_argument("--project")
+    plan.add_argument("--location", default="asia-northeast1")
+    plan.add_argument("--show-sql", action="store_true")
     profile = subparsers.add_parser("profile", help="Profile one BigQuery relation and update Parquet storage")
     profile.add_argument("--storage-dir", type=Path, required=True)
     profile.add_argument("--select", required=True)
@@ -57,6 +64,29 @@ def main() -> None:
         models_path, profiles_path = build_dbt_artifact_storage(args.project_dir, args.output_dir)
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
+    elif args.command == "plan":
+        repository = DuckDBProfileRepository(
+            args.storage_dir / MODELS_FILENAME,
+            args.storage_dir / PROFILES_FILENAME,
+        )
+        items = create_profile_plan(
+            repository.list_models(),
+            selector=args.select,
+            project=args.project,
+            location=args.location,
+        )
+        for item in items:
+            status = "READY" if item.executable else "BLOCKED"
+            print(f"[{status}] {item.model.unique_id}")
+            print(f"  Relation: {item.model.relation_name}")
+            print(f"  Dimension: {item.dimension}")
+            print(f"  Estimated bytes: {item.estimated_bytes:,}")
+            print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
+            if item.skipped_columns:
+                print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
+            if args.show_sql:
+                print("  SQL:")
+                print(item.sql)
     elif args.command == "profile":
         repository = DuckDBProfileRepository(
             args.storage_dir / MODELS_FILENAME,

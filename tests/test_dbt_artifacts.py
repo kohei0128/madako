@@ -24,6 +24,9 @@ def test_reads_tsubo_models_and_sources() -> None:
     assert zaim.columns[0].name == "as_of_date"
     assert zaim.columns[0].data_type == "DATE"
     assert "not_null" in zaim.tests
+    assert zaim.profiling.enabled is True
+    assert zaim.profiling.dimensions == ["as_of_date"]
+    assert zaim.profiling.max_bytes_billed == 1_000_000_000
 
 
 def test_artifact_storage_round_trip(tmp_path: Path) -> None:

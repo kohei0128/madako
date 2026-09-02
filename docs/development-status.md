@@ -1,6 +1,6 @@
 # Data Profile 開発状況と現在の方針
 
-最終更新: 2026-08-31
+最終更新: 2026-09-02
 
 この文書は、[MVP要件定義](product-requirements.md)を実装する過程で決まった内容と、現在の開発状況を記録する。MVPの目的と対象範囲は要件定義を正とし、この文書では具体化した設計判断と次に行う作業を扱う。
 
@@ -32,9 +32,12 @@
 - `stg_zaim_transactions`に限定したBigQuery profiling pilot
 - 実行前dry runと`max_bytes_billed`によるcost safety
 - Overall＋DATE dimension profileのParquet統合
+- dbt `meta.profiling`による対象・dimension・処理量上限の設定
+- 設定駆動のSQL生成とBigQuery dry runを行う`plan`コマンド
+- artifact再import時の既存profile引き継ぎ
 - APIテストとWebのproduction build
 
-現在のAPIは指定したstorage directoryのParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用profileの入力、`fixtures/tsubo`はdbt artifactsから生成したmetadata-only storageとして使用する。BigQueryにはまだ接続していない。
+現在のAPIは指定したstorage directoryのParquet filesをDuckDBで読み込む。`fixtures/sample_profiles.json`は開発用profileの入力、`fixtures/tsubo`はdbt artifactsとBigQuery profileから生成したローカルstorageとして使用する。
 
 ## 現在のプロダクト方針
 
@@ -251,35 +254,48 @@ data-profile import-dbt --project-dir <dbt-project> --output-dir <storage-dir>
 
 ## 次の開発段階
 
-次は、pilotで明示している対象とdimensionをdbt設定から解決し、実行前にSQLとcostを確認できる独立したplanコマンドへ分離する。
+dbt設定から対象とdimensionを解決し、実行前にSQLとcostを確認する独立したplanコマンドまで完了した。`stg_zaim_transactions`の実dry runでは44,762 bytesと見積もられ、1 GBの上限内で`READY`になった。
 
-完了条件:
+完了済み:
 
 1. dbt `meta.profiling`からenabledとdimensionsを解決できる
-2. project / directory / model単位の設定継承と上書きを解決できる
+2. dbtがmanifestへ解決したproject / directory / model単位の設定継承と上書きを利用できる
 3. unsupported column typeをquery対象から安全に除外し理由を表示できる
 4. `data-profile plan`は実queryを実行せずSQL、対象、estimated bytesを表示する
-5. `profile`はplan結果と同じSQL・上限を使って実行する
-6. artifact再import時にも既存profileを安全に引き継げる
+5. artifact再import時にも既存profileを`unique_id`で引き継げる
 
-この段階でもBigQuery queryは実行しない。dbt metadataの読み取り境界を安定させた後、次の順序で進める。
+次は、`profile`をplan結果の実行処理に統合する。
 
 ```text
-profiling設定とselection
+create_profile_plan（設定・selection・SQL・上限）
     ↓
-BigQuery SQL生成
+plan CLI（dry runのみ）
     ↓
-dry runとcost safety
-    ↓
-profile CLIによる実行・保存
+profile CLI（READY項目の実行・保存）
 ```
+
+その後、複数relationの逐次実行、relationごとの失敗分離、atomicなstorage置換を追加する。
+
+## ライブラリ化に向けた境界
+
+今回追加した`create_profile_plan`はCLIに依存せず、`ModelProfile`と推定処理量を返す関数を受け取って計画を返す。このため、artifact取り込み、計画、実行、保存、APIを段階的に分離できる土台ができた。
+
+配布可能なライブラリにする前に、次を整備する。
+
+- `bq` subprocessをBigQuery adapter interfaceの背後へ置く
+- plan結果を受け取る共通executorを作り、CLIを薄い呼び出し層にする
+- public Python APIと例外契約を定義する
+- storage / config schemaのversioningとmigration方針を決める
+- package metadata、利用者向け設定、BigQuery依存をoptional dependencyとして整理する
+
+これらを行えば、CLI・Webアプリをライブラリの利用者として構成でき、別のdbt projectや将来のwarehouse adapterからも再利用できる。
 
 ## 未決事項
 
 - DATE dimension以外の順序付きdimensionをどう宣言するか
 - dimension cardinalityの上限と高cardinality時の保存・表示方針
-- profile対象を指定するdbt `meta` schema
-- BigQuery dry runと`max_bytes_billed`の具体的な設定方法
+- 複数dimensionを別queryにするか1 queryへ統合するか
+- selectorをdbtのselection syntaxへどこまで合わせるか
 - 最新profileを安全に置き換えるfile operation
 - Column DetailのDrawer / row展開をMVPへ含めるか
 
