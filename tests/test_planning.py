@@ -105,10 +105,12 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
                 })
         return rows
 
-    updated = execute_profile_plan([model], plan, runner=run)
+    execution = execute_profile_plan([model], plan, runner=run)
 
     assert len(calls) == 2
-    assert [profile.dimension_name for profile in updated[0].profiles] == [
+    assert execution.complete is True
+    assert [result.status for result in execution.results] == ["succeeded", "succeeded"]
+    assert [profile.dimension_name for profile in execution.models[0].profiles] == [
         None,
         "event_date",
         "processed_date",
@@ -120,7 +122,30 @@ def test_execute_plan_rejects_all_work_before_running_blocked_item() -> None:
     plan = create_profile_plan([configured_model()], estimator=lambda *_: 10_001)
     calls: list[str] = []
 
-    with pytest.raises(ProfilingError, match="over max_bytes_billed"):
-        execute_profile_plan([configured_model()], plan, runner=lambda sql, *_: calls.append(sql) or [])
+    execution = execute_profile_plan(
+        [configured_model()],
+        plan,
+        runner=lambda sql, *_: calls.append(sql) or [],
+    )
 
     assert calls == []
+    assert execution.complete is False
+    assert execution.results[0].status == "skipped"
+    assert execution.results[0].error == "estimated bytes exceed max_bytes_billed"
+
+
+def test_execute_plan_marks_failure_and_skips_remaining_items() -> None:
+    model = configured_model().model_copy(update={
+        "profiling": ProfilingConfig(enabled=True, dimensions=["event_date", "event_date"]),
+    })
+    plan = create_profile_plan([model], estimator=lambda *_: 1)
+
+    execution = execute_profile_plan(
+        [model],
+        plan,
+        runner=lambda *_: (_ for _ in ()).throw(ProfilingError("query failed")),
+    )
+
+    assert execution.complete is False
+    assert [result.status for result in execution.results] == ["failed", "skipped"]
+    assert execution.results[0].error == "query failed"

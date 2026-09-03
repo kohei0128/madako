@@ -1,4 +1,7 @@
 import json
+import os
+import shutil
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -35,6 +38,22 @@ def build_dbt_artifact_storage(project_dir: Path, output_dir: Path) -> tuple[Pat
 
 def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple[Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    models_path = output_dir / MODELS_FILENAME
+    profiles_path = output_dir / PROFILES_FILENAME
+
+    with tempfile.TemporaryDirectory(prefix=".profile-stage-", dir=output_dir) as temporary:
+        stage_dir = Path(temporary)
+        staged_models, staged_profiles = _write_profile_storage_files(models, stage_dir)
+        DuckDBProfileRepository(staged_models, staged_profiles).list_models()
+        _replace_storage_files(
+            ((staged_models, models_path), (staged_profiles, profiles_path)),
+            stage_dir,
+        )
+
+    return models_path, profiles_path
+
+
+def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -> tuple[Path, Path]:
     models_path = output_dir / MODELS_FILENAME
     profiles_path = output_dir / PROFILES_FILENAME
 
@@ -130,6 +149,29 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
         connection.execute("COPY column_profiles TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(profiles_path)])
 
     return models_path, profiles_path
+
+
+def _replace_storage_files(files: tuple[tuple[Path, Path], ...], stage_dir: Path) -> None:
+    backups: list[tuple[Path, Path]] = []
+    replaced: list[Path] = []
+    for _, target in files:
+        if target.exists():
+            backup = stage_dir / f"{target.name}.backup"
+            shutil.copy2(target, backup)
+            backups.append((backup, target))
+
+    try:
+        for staged, target in files:
+            os.replace(staged, target)
+            replaced.append(target)
+    except Exception:
+        backed_up_targets = {target for _, target in backups}
+        for backup, target in backups:
+            os.replace(backup, target)
+        for target in replaced:
+            if target not in backed_up_targets and target.exists():
+                target.unlink()
+        raise
 
 
 def _columns_from_profiles(model: ModelProfile) -> list[ColumnMetadata]:

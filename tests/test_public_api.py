@@ -69,6 +69,10 @@ def test_public_api_plans_profiles_and_persists_results(tmp_path: Path) -> None:
     result = app.run(plan)
 
     assert isinstance(result, ProfileResult)
+    assert result.successful is True
+    assert result.storage_updated is True
+    assert result.items[0].status == "succeeded"
+    assert result.items[0].row_count == len(profile_rows())
     assert result.profiled_models == ("events",)
     assert len(runner_calls) == 1
     assert result.models_path.exists()
@@ -90,3 +94,24 @@ def test_profile_is_plan_and_run_shortcut(tmp_path: Path) -> None:
 
     assert result.profiled_models == ("events",)
     assert result.plan.items[0].dimension == "event_date"
+
+
+def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    models_before = (tmp_path / "models.parquet").read_bytes()
+    profiles_before = (tmp_path / "column_profiles.parquet").read_bytes()
+    app = DataProfile(
+        tmp_path,
+        estimator=lambda *_: 1_000,
+        runner=lambda *_: (_ for _ in ()).throw(RuntimeError("warehouse unavailable")),
+    )
+
+    result = app.profile(select="events")
+
+    assert result.successful is False
+    assert result.storage_updated is False
+    assert result.profiled_models == ()
+    assert result.failed[0].error == "warehouse unavailable"
+    assert result.skipped == ()
+    assert (tmp_path / "models.parquet").read_bytes() == models_before
+    assert (tmp_path / "column_profiles.parquet").read_bytes() == profiles_before

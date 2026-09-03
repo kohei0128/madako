@@ -279,7 +279,9 @@ plan CLI（dry runのみ）
 profile CLI（READY項目の実行・保存）
 ```
 
-次は、relationごとの実行結果と失敗理由を構造化し、atomicなstorage置換を追加する。その後、BigQuery adapter interfaceとpublic Python APIを安定させる。
+Parquetはstageへ全fileを生成し、DuckDBで検証してから置換する。置換途中の例外ではbackupから既存fileを復元する。
+
+次は、relationごとの実行結果と失敗理由を構造化する。その後、BigQuery adapter interfaceとpublic Python APIを安定させる。全体の順序とライブラリ化へ進む判定条件は[Roadmap](roadmap.md)を参照する。
 
 ## ライブラリ化に向けた境界
 
@@ -301,7 +303,7 @@ profile CLI（READY項目の実行・保存）
 - dimension cardinalityの上限と高cardinality時の保存・表示方針
 - 複数dimensionを別queryにするか1 queryへ統合するか
 - selectorをdbtのselection syntaxへどこまで合わせるか
-- 最新profileを安全に置き換えるfile operation
+- process強制終了も含めて複数fileを単一transactionとして切り替える必要があるか
 - Column DetailのDrawer / row展開をMVPへ含めるか
 
 ## 更新ルール

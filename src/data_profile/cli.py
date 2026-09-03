@@ -93,6 +93,12 @@ def main() -> None:
         )
         _print_plan(plan_result)
         result = data_profile.run(plan_result)
+        for item_result in result.items:
+            label = item_result.item.dimension or "Overall"
+            detail = f" · {item_result.error}" if item_result.error else f" · {item_result.row_count:,} rows"
+            print(f"[{item_result.status.upper()}] {item_result.item.model.name} / {label}{detail}")
+        if not result.successful:
+            raise SystemExit(1)
         print(f"Profiled models: {', '.join(result.profiled_models)}")
         print(f"Executed profile items: {len(result.plan.items):,}")
         print(f"Updated storage: {data_profile.storage_dir}")

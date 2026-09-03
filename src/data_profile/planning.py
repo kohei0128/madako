@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Literal
 
 from data_profile.bigquery_profile import SUPPORTED_TYPES, ProfilingError, dry_run, execute_profile, generate_profile_sql, rows_to_profiles
 from data_profile.models import ModelProfile
@@ -24,6 +25,21 @@ class ProfilePlanItem:
 
 Estimator = Callable[[str, str, str], int]
 Runner = Callable[[str, str, str, int], list[dict]]
+
+
+@dataclass(frozen=True)
+class ProfileItemResult:
+    item: ProfilePlanItem
+    status: Literal["succeeded", "failed", "skipped"]
+    row_count: int = 0
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ProfilePlanExecution:
+    models: list[ModelProfile]
+    results: tuple[ProfileItemResult, ...]
+    complete: bool
 
 
 def create_profile_plan(
@@ -68,25 +84,45 @@ def execute_profile_plan(
     plan: list[ProfilePlanItem],
     *,
     runner: Runner = execute_profile,
-) -> list[ModelProfile]:
+) -> ProfilePlanExecution:
     blocked = [item for item in plan if not item.executable]
     if blocked:
-        names = ", ".join(f"{item.model.name}:{item.dimension or 'Overall'}" for item in blocked)
-        raise ProfilingError(f"profile plan contains items over max_bytes_billed: {names}")
+        results = tuple(ProfileItemResult(
+            item=item,
+            status="skipped",
+            error=(
+                "estimated bytes exceed max_bytes_billed"
+                if not item.executable
+                else "plan contains another item over max_bytes_billed"
+            ),
+        ) for item in plan)
+        return ProfilePlanExecution(models=models, results=results, complete=False)
 
     profiles_by_model: dict[str, list] = {}
-    for item in plan:
-        rows = runner(item.sql, item.project, item.location, item.max_bytes_billed)
+    results: list[ProfileItemResult] = []
+    for index, item in enumerate(plan):
+        try:
+            rows = runner(item.sql, item.project, item.location, item.max_bytes_billed)
+        except Exception as error:
+            results.append(ProfileItemResult(item=item, status="failed", error=str(error)))
+            results.extend(ProfileItemResult(
+                item=remaining,
+                status="skipped",
+                error="not executed because an earlier item failed",
+            ) for remaining in plan[index + 1:])
+            return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
         profiles = rows_to_profiles(item.model, rows)
         collected = profiles_by_model.setdefault(item.model.unique_id, [])
         if not collected:
             collected.extend(profile for profile in profiles if profile.dimension_name is None)
         collected.extend(profile for profile in profiles if profile.dimension_name is not None)
+        results.append(ProfileItemResult(item=item, status="succeeded", row_count=len(rows)))
 
     profiled_at = datetime.now(UTC)
-    return [
+    updated_models = [
         model.model_copy(update={"profiles": profiles_by_model[model.unique_id], "profiled_at": profiled_at})
         if model.unique_id in profiles_by_model
         else model
         for model in models
     ]
+    return ProfilePlanExecution(models=updated_models, results=tuple(results), complete=True)

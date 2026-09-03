@@ -3,7 +3,7 @@ from pathlib import Path
 
 from data_profile.bigquery_profile import dry_run, execute_profile
 from data_profile.models import ModelProfile
-from data_profile.planning import Estimator, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
+from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, write_profile_storage
 
@@ -24,9 +24,23 @@ class ProfilePlan:
 @dataclass(frozen=True)
 class ProfileResult:
     plan: ProfilePlan
+    items: tuple[ProfileItemResult, ...]
     profiled_models: tuple[str, ...]
     models_path: Path
     profiles_path: Path
+    storage_updated: bool
+
+    @property
+    def successful(self) -> bool:
+        return self.storage_updated and all(item.status == "succeeded" for item in self.items)
+
+    @property
+    def failed(self) -> tuple[ProfileItemResult, ...]:
+        return tuple(item for item in self.items if item.status == "failed")
+
+    @property
+    def skipped(self) -> tuple[ProfileItemResult, ...]:
+        return tuple(item for item in self.items if item.status == "skipped")
 
 
 class DataProfile:
@@ -87,14 +101,22 @@ class DataProfile:
 
     def run(self, plan: ProfilePlan) -> ProfileResult:
         models = self.models()
-        updated_models = execute_profile_plan(models, list(plan.items), runner=self._runner)
-        models_path, profiles_path = write_profile_storage(updated_models, self.storage_dir)
-        profiled_models = tuple(dict.fromkeys(item.model.name for item in plan.items))
+        execution = execute_profile_plan(models, list(plan.items), runner=self._runner)
+        models_path = self.storage_dir / MODELS_FILENAME
+        profiles_path = self.storage_dir / PROFILES_FILENAME
+        if execution.complete:
+            models_path, profiles_path = write_profile_storage(execution.models, self.storage_dir)
+        profiled_models = (
+            tuple(dict.fromkeys(item.model.name for item in plan.items))
+            if execution.complete else ()
+        )
         return ProfileResult(
             plan=plan,
+            items=execution.results,
             profiled_models=profiled_models,
             models_path=models_path,
             profiles_path=profiles_path,
+            storage_updated=execution.complete,
         )
 
     def profile(

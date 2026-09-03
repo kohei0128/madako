@@ -47,6 +47,11 @@ def main() -> None:
         return
 
     result = app.run(plan)
+    for item_result in result.items:
+        detail = f": {item_result.error}" if item_result.error else f": {item_result.row_count:,} rows"
+        print(f"[{item_result.status.upper()}] {item_result.item.model.name}{detail}")
+    if not result.successful:
+        raise SystemExit(1)
     print(f"Profiled models: {', '.join(result.profiled_models)}")
     print(f"Saved models: {result.models_path}")
     print(f"Saved profiles: {result.profiles_path}")

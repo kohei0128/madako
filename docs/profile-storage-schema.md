@@ -90,6 +90,6 @@ Parquet columnは単一の物理型を必要とするが、Min / MaxはNumeric�
 
 ## 書き換え方針
 
-MVPではprofile historyを保持せず、常に最新の2 filesを読み取る。実際のprofile CLIでは、途中状態をUIが読まないように一時directoryへ両方を書き出した後、directory単位で安全に置き換える方針とする。
+MVPではprofile historyを保持せず、常に最新の2 filesを読み取る。更新時は同じfilesystem上のstage directoryへ両方を書き出し、DuckDBで読み戻せることを検証してから`os.replace`で置き換える。
 
-現在の`build-sample`は開発fixture生成用であり、安全なatomic replacementはまだ実装していない。
+置換前のfilesはstage内へbackupし、途中のfile置換に失敗した場合は両方を復元する。これにより通常の生成・置換エラーでは直前の正常なstorageを維持する。OS processがfile間の置換中に強制終了するケースまで単一transactionにするには、将来generation pointer方式を検討する。

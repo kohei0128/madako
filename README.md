@@ -4,7 +4,7 @@ dbt metadataと実データのprofiling結果を同じ画面で確認する、�
 
 現在は、dbt artifactsからmodel metadataとprofiling設定を取り込み、BigQueryで生成したOverall / Dimension profileをParquetへ保存し、DuckDB・API経由でExplorerと高密度なColumns一覧に表示します。DATE dimensionのpartition trendとcategorical dimensionのvalue比較にも対応しています。
 
-現在の進捗、実装で具体化した方針、次の開発段階は[開発状況と現在の方針](docs/development-status.md)を参照してください。Parquetの定義は[Profile Storage Schema](docs/profile-storage-schema.md)、MVP全体の基準は[MVP要件定義](docs/product-requirements.md)にあります。
+現在の進捗と実装判断は[開発状況と現在の方針](docs/development-status.md)、ライブラリ化までの順序は[Roadmap](docs/roadmap.md)を参照してください。Parquetの定義は[Profile Storage Schema](docs/profile-storage-schema.md)、MVP全体の基準は[MVP要件定義](docs/product-requirements.md)にあります。
 
 ## Setup
 
