@@ -13,10 +13,23 @@ class ColumnProfile(BaseModel):
     description: str = ""
     null_count: Annotated[int, Field(ge=0)]
     null_rate: Annotated[float, Field(ge=0, le=1)]
+    empty_string_count: Annotated[int, Field(ge=0)] = 0
+    missing_count: Annotated[int, Field(ge=0)] = 0
+    missing_rate: Annotated[float, Field(ge=0, le=1)] = 0
     distinct_count: Annotated[int | None, Field(ge=0)] = None
     min_value: MetricValue = None
     max_value: MetricValue = None
     true_count: Annotated[int | None, Field(ge=0)] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def default_missing_metrics_to_null_metrics(cls, data: object) -> object:
+        if isinstance(data, dict):
+            data = data.copy()
+            data.setdefault("empty_string_count", 0)
+            data.setdefault("missing_count", data.get("null_count", 0))
+            data.setdefault("missing_rate", data.get("null_rate", 0))
+        return data
 
 
 class ProfileSlice(BaseModel):
@@ -42,6 +55,7 @@ class ProfilingConfig(BaseModel):
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
     max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
+    treat_empty_string_as_null: bool = False
 
 
 class ModelProfile(BaseModel):

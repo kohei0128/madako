@@ -6,6 +6,9 @@ export interface ColumnProfile {
   description: string;
   null_count: number;
   null_rate: number;
+  empty_string_count: number;
+  missing_count: number;
+  missing_rate: number;
   distinct_count: number | null;
   min_value: string | number | boolean | null;
   max_value: string | number | boolean | null;
@@ -30,6 +33,12 @@ export interface ModelProfile {
   materialization: string;
   tags: string[];
   tests: string[];
+  profiling: {
+    enabled: boolean;
+    dimensions: string[];
+    max_bytes_billed: number;
+    treat_empty_string_as_null: boolean;
+  };
   columns: { name: string; data_type: string; description: string }[];
   profiled_at: string | null;
   profiles: ProfileSlice[];

@@ -18,12 +18,24 @@ function matchesType(column: ColumnProfile, filter: TypeFilter): boolean {
   return column.data_type === "DATE";
 }
 
-function NullMetric({ column }: { column: ColumnProfile }) {
+function missingMetric(column: ColumnProfile, includeEmpty: boolean) {
+  return includeEmpty
+    ? { count: column.missing_count, rate: column.missing_rate }
+    : { count: column.null_count, rate: column.null_rate };
+}
+
+function missingDetail(column: ColumnProfile, includeEmpty: boolean): string {
+  if (!includeEmpty) return `${column.null_count.toLocaleString()} nulls`;
+  return `${column.missing_count.toLocaleString()} missing (${column.null_count.toLocaleString()} null, ${column.empty_string_count.toLocaleString()} empty)`;
+}
+
+function NullMetric({ column, includeEmpty }: { column: ColumnProfile; includeEmpty: boolean }) {
+  const metric = missingMetric(column, includeEmpty);
   return <div className="null-metric">
-    <div className="bar" style={{ "--rate": `${column.null_rate * 100}%` } as React.CSSProperties}>
-      <span>{(column.null_rate * 100).toFixed(1)}%</span>
+    <div className="bar" title={missingDetail(column, includeEmpty)} style={{ "--rate": `${metric.rate * 100}%` } as React.CSSProperties}>
+      <span>{(metric.rate * 100).toFixed(1)}%</span>
     </div>
-    <small>{column.null_count.toLocaleString()}</small>
+    <small>{metric.count.toLocaleString()}</small>
   </div>;
 }
 
@@ -74,7 +86,7 @@ function HeatLegend({ label }: { label: string }) {
   return <div className="heat-heading"><span>{label}</span><span className="heat-legend"><small>Low</small><i /><i /><i /><i /><small>High</small></span></div>;
 }
 
-function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; filter: TypeFilter; range: TrendRange }) {
+function TemporalTable({ profiles, filter, range, includeEmpty }: { profiles: ProfileSlice[]; filter: TypeFilter; range: TrendRange; includeEmpty: boolean }) {
   const ordered = [...profiles].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? ""));
   const visibleProfiles = range === "all" ? ordered : ordered.slice(-range);
   const latest = visibleProfiles.at(-1);
@@ -83,7 +95,7 @@ function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; 
   const columns = latest.columns.filter((column) => matchesType(column, filter));
 
   return <div className="table-wrap trend-table"><table>
-    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label="NULL rate by date" /></th><th>Latest</th><th>Latest metrics</th></tr></thead>
+    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`${includeEmpty ? "MISSING" : "NULL"} rate by date`} /></th><th>Latest</th><th>Latest metrics</th></tr></thead>
     <tbody>{columns.map((column) => {
       const previousColumn = previous?.columns.find((item) => item.name === column.name);
       return <tr key={column.name}>
@@ -96,13 +108,14 @@ function TemporalTable({ profiles, filter, range }: { profiles: ProfileSlice[]; 
         >
           {visibleProfiles.map((profile) => {
             const point = profile.columns.find((item) => item.name === column.name);
-            const rate = point?.null_rate ?? 0;
+            const metric = point ? missingMetric(point, includeEmpty) : { rate: 0, count: 0 };
+            const rate = metric.rate;
             return <span key={profile.dimension_value} className={point ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
               style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-              title={`${profile.dimension_value}: ${point ? `${(rate * 100).toFixed(1)}% NULL (${point.null_count.toLocaleString()})` : "No data"}`} />;
+              title={`${profile.dimension_value}: ${point ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(point, includeEmpty)}` : "No data"}`} />;
           })}
         </div><small className="trend-dates"><span>{visibleProfiles[0]?.dimension_value}</span><span>{latest.dimension_value}</span></small></td>
-        <td className="latest-value">{(column.null_rate * 100).toFixed(1)}%<small>{column.null_count.toLocaleString()} nulls</small><small>{previousColumn ? `prev. ${(previousColumn.null_rate * 100).toFixed(1)}%` : ""}</small></td>
+        <td className="latest-value">{(missingMetric(column, includeEmpty).rate * 100).toFixed(1)}%<small title={missingDetail(column, includeEmpty)}>{missingMetric(column, includeEmpty).count.toLocaleString()} {includeEmpty ? "missing" : "nulls"}</small><small>{previousColumn ? `prev. ${(missingMetric(previousColumn, includeEmpty).rate * 100).toFixed(1)}%` : ""}</small></td>
         <td><CompactMetrics column={column} slice={latest} /></td>
       </tr>;
     })}</tbody>
@@ -131,10 +144,10 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
   return <PairMetric leftLabel="Min" leftValue={String(min ?? "—")} rightLabel="Max" rightValue={String(max ?? "—")} />;
 }
 
-function CategoricalTable({ profiles, filter, dimensionName }: { profiles: ProfileSlice[]; filter: TypeFilter; dimensionName: string }) {
+function CategoricalTable({ profiles, filter, dimensionName, includeEmpty }: { profiles: ProfileSlice[]; filter: TypeFilter; dimensionName: string; includeEmpty: boolean }) {
   const columns = profiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
   return <div className="table-wrap dimension-table"><table>
-    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`NULL rate by ${dimensionName}`} /></th><th>Metrics across values</th></tr></thead>
+    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`${includeEmpty ? "MISSING" : "NULL"} rate by ${dimensionName}`} /></th><th>Metrics across values</th></tr></thead>
     <tbody>{columns.map((baseColumn) => <tr key={baseColumn.name}>
       <td className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></td>
       <td><code>{baseColumn.data_type}</code></td>
@@ -143,10 +156,10 @@ function CategoricalTable({ profiles, filter, dimensionName }: { profiles: Profi
         style={{ "--point-count": profiles.length } as React.CSSProperties}
       >{profiles.map((profile) => {
         const column = profile.columns.find((item) => item.name === baseColumn.name);
-        const rate = column?.null_rate ?? 0;
+        const rate = column ? missingMetric(column, includeEmpty).rate : 0;
         return <span key={profile.dimension_value} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
           style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-          title={`${dimensionName} = ${profile.dimension_value}: ${column ? `${(rate * 100).toFixed(1)}% NULL (${column.null_count.toLocaleString()})` : "No data"}`} />;
+          title={`${dimensionName} = ${profile.dimension_value}: ${column ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(column, includeEmpty)}` : "No data"}`} />;
       })}</div><small className="dimension-count">{profiles.length} values · hover to inspect</small></td>
       <td><DimensionMetricSummary profiles={profiles} columnName={baseColumn.name} /></td>
     </tr>)}</tbody>
@@ -176,6 +189,7 @@ function App() {
   }, []);
 
   const model = models.find((item) => item.name === selectedModel);
+  const includeEmpty = model?.profiling.treat_empty_string_as_null ?? false;
   const slice = model?.profiles[sliceIndex];
   const overallSlice = model?.profiles.find((profile) => profile.dimension_name === null);
   const dimensionNames = useMemo(() => Array.from(new Set(
@@ -221,20 +235,21 @@ function App() {
   }
 
   function renderHeaders() {
-    if (typeFilter === "string") return <tr><th>Column</th><th>NULL</th><th>Distinct</th></tr>;
-    if (typeFilter === "numeric") return <tr><th>Column</th><th>Type</th><th>NULL</th><th>Min</th><th>Max</th></tr>;
-    if (typeFilter === "boolean") return <tr><th>Column</th><th>NULL</th><th>TRUE</th></tr>;
-    if (typeFilter === "date") return <tr><th>Column</th><th>NULL</th><th>Min date</th><th>Max date</th></tr>;
-    return <tr><th>Column</th><th>Type</th><th>NULL</th><th>Metrics</th></tr>;
+    const missingLabel = includeEmpty ? "MISSING" : "NULL";
+    if (typeFilter === "string") return <tr><th>Column</th><th>{missingLabel}</th><th>Distinct</th></tr>;
+    if (typeFilter === "numeric") return <tr><th>Column</th><th>Type</th><th>{missingLabel}</th><th>Min</th><th>Max</th></tr>;
+    if (typeFilter === "boolean") return <tr><th>Column</th><th>{missingLabel}</th><th>TRUE</th></tr>;
+    if (typeFilter === "date") return <tr><th>Column</th><th>{missingLabel}</th><th>Min date</th><th>Max date</th></tr>;
+    return <tr><th>Column</th><th>Type</th><th>{missingLabel}</th><th>Metrics</th></tr>;
   }
 
   function renderCells(column: ColumnProfile) {
     const columnCell = <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>;
-    if (typeFilter === "string") return <>{columnCell}<td><NullMetric column={column} /></td><td className="value-cell">{column.distinct_count?.toLocaleString() ?? "—"}</td></>;
-    if (typeFilter === "numeric") return <>{columnCell}<td><code>{column.data_type}</code></td><td><NullMetric column={column} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;
-    if (typeFilter === "boolean") return <>{columnCell}<td><NullMetric column={column} /></td><td><BooleanMetric column={column} slice={slice!} /></td></>;
-    if (typeFilter === "date") return <>{columnCell}<td><NullMetric column={column} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;
-    return <>{columnCell}<td><code>{column.data_type}</code></td><td><NullMetric column={column} /></td><td><CompactMetrics column={column} slice={slice!} /></td></>;
+    if (typeFilter === "string") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{column.distinct_count?.toLocaleString() ?? "—"}</td></>;
+    if (typeFilter === "numeric") return <>{columnCell}<td><code>{column.data_type}</code></td><td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;
+    if (typeFilter === "boolean") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td><BooleanMetric column={column} slice={slice!} /></td></>;
+    if (typeFilter === "date") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;
+    return <>{columnCell}<td><code>{column.data_type}</code></td><td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td><CompactMetrics column={column} slice={slice!} /></td></>;
   }
 
   return <main className="shell">
@@ -308,8 +323,8 @@ function App() {
           <table><thead>{renderHeaders()}</thead><tbody>{visibleColumns.map((column) => <tr key={column.name}>{renderCells(column)}</tr>)}</tbody></table>
           {visibleColumns.length === 0 && <div className="empty-state">No columns match this type.</div>}
         </div>}
-        {temporalDimension && <TemporalTable profiles={dimensionSlices} filter={typeFilter} range={trendRange} />}
-        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} />}
+        {temporalDimension && <TemporalTable profiles={dimensionSlices} filter={typeFilter} range={trendRange} includeEmpty={includeEmpty} />}
+        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} includeEmpty={includeEmpty} />}
       </>}
     </section>
   </main>;

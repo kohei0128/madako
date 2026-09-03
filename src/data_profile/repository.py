@@ -80,11 +80,13 @@ class DuckDBProfileRepository:
     def _build_model(self, row: tuple) -> ModelProfile:
         model_name = row[2]
         with duckdb.connect() as connection:
+            missing_expressions = self._missing_expressions(connection)
             profile_rows = connection.execute(
-                """
+                f"""
                 SELECT profile_order, dimension_name, dimension_value, record_count,
                        column_name, column_type, column_description, null_count,
-                       null_rate, distinct_count, min_value, max_value, true_count
+                       null_rate, {missing_expressions}, distinct_count, min_value,
+                       max_value, true_count
                 FROM read_parquet(?)
                 WHERE model_name = ?
                 ORDER BY profile_order, column_order
@@ -115,10 +117,13 @@ class DuckDBProfileRepository:
                 description=profile_row[6],
                 null_count=profile_row[7],
                 null_rate=profile_row[8],
-                distinct_count=profile_row[9],
-                min_value=self._decode_value(profile_row[10], profile_row[5]),
-                max_value=self._decode_value(profile_row[11], profile_row[5]),
-                true_count=profile_row[12],
+                empty_string_count=profile_row[9],
+                missing_count=profile_row[10],
+                missing_rate=profile_row[11],
+                distinct_count=profile_row[12],
+                min_value=self._decode_value(profile_row[13], profile_row[5]),
+                max_value=self._decode_value(profile_row[14], profile_row[5]),
+                true_count=profile_row[15],
             ))
         if current_metadata is not None:
             slices.append(ProfileSlice(
@@ -144,6 +149,16 @@ class DuckDBProfileRepository:
             profiled_at=row[12],
             profiles=slices,
         )
+
+    def _missing_expressions(self, connection: duckdb.DuckDBPyConnection) -> str:
+        columns = connection.execute(
+            "DESCRIBE SELECT * FROM read_parquet(?)",
+            [str(self.profiles_path)],
+        ).fetchall()
+        names = {column[0] for column in columns}
+        if {"empty_string_count", "missing_count", "missing_rate"} <= names:
+            return "empty_string_count, missing_count, missing_rate"
+        return "0 AS empty_string_count, null_count AS missing_count, null_rate AS missing_rate"
 
     @staticmethod
     def _decode_value(value: str | None, column_type: str) -> str | int | float | None:

@@ -38,6 +38,8 @@ def test_get_model_profile(repository: DuckDBProfileRepository) -> None:
     assert payload["schema"] == "marts"
     assert payload["profiles"][0]["record_count"] == 12480
     assert payload["profiles"][0]["columns"][2]["null_rate"] == 0.15
+    assert payload["profiles"][0]["columns"][2]["empty_string_count"] == 0
+    assert payload["profiles"][0]["columns"][2]["missing_rate"] == 0.15
     assert payload["profiles"][0]["columns"][2]["min_value"] == 0.04
 
 

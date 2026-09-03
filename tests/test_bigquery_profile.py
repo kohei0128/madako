@@ -1,5 +1,5 @@
 from data_profile.bigquery_profile import generate_profile_sql, rows_to_profiles
-from data_profile.models import ColumnMetadata, ModelProfile
+from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 
 
 def model() -> ModelProfile:
@@ -58,3 +58,43 @@ def test_generates_overall_only_sql_without_dimension() -> None:
     assert "overall_agg" in sql
     assert "dimension_agg" not in sql
     assert "CAST(NULL AS STRING) AS dimension_name" in sql
+
+
+def test_empty_strings_can_be_counted_as_missing_and_excluded_from_distinct() -> None:
+    configured = model().model_copy(update={
+        "profiling": ProfilingConfig(treat_empty_string_as_null=True),
+    })
+
+    sql = generate_profile_sql(configured)
+
+    assert "COUNTIF(`category` = '') AS m1_empty_string_count" in sql
+    assert "COUNTIF(`category` IS NULL OR `category` = '') AS m1_missing_count" in sql
+    assert "COUNT(DISTINCT NULLIF(`category`, ''))" in sql
+    assert "COUNTIF(`amount` IS NULL) AS m2_missing_count" in sql
+
+
+def test_reconstructs_separate_null_empty_and_missing_metrics() -> None:
+    rows = [{
+        "dimension_name": None,
+        "dimension_value": None,
+        "record_count": "10",
+        "column_order": "1",
+        "column_name": "category",
+        "column_type": "STRING",
+        "null_count": "1",
+        "null_rate": "0.1",
+        "empty_string_count": "2",
+        "missing_count": "3",
+        "missing_rate": "0.3",
+        "distinct_count": "4",
+        "min_value": None,
+        "max_value": None,
+        "true_count": None,
+    }]
+
+    column = rows_to_profiles(model(), rows)[0].columns[0]
+
+    assert column.null_count == 1
+    assert column.empty_string_count == 2
+    assert column.missing_count == 3
+    assert column.missing_rate == 0.3

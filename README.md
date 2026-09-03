@@ -57,7 +57,10 @@ config:
       dimensions:
         - as_of_date
       max_bytes_billed: 1000000000
+      treat_empty_string_as_null: true
 ```
+
+`treat_empty_string_as_null`は既定で`false`です。有効にするとSTRINGの`''`をMissingへ含めます。物理NULLと空文字は別々に保存され、UIでは`MISSING`として合算値を表示し、hoverで内訳を確認できます。空白だけの文字列は対象外です。
 
 実queryを発行せず、設定から対象・SQL・推定処理量・上限判定を確認できます。
 

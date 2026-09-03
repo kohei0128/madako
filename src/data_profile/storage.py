@@ -71,6 +71,9 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
                     column.description,
                     column.null_count,
                     column.null_rate,
+                    column.empty_string_count,
+                    column.missing_count,
+                    column.missing_rate,
                     column.distinct_count,
                     _encode_value(column.min_value),
                     _encode_value(column.max_value),
@@ -109,6 +112,9 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
                 column_description VARCHAR NOT NULL,
                 null_count BIGINT NOT NULL,
                 null_rate DOUBLE NOT NULL,
+                empty_string_count BIGINT NOT NULL,
+                missing_count BIGINT NOT NULL,
+                missing_rate DOUBLE NOT NULL,
                 distinct_count BIGINT,
                 min_value VARCHAR,
                 max_value VARCHAR,
@@ -117,7 +123,7 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
         """)
         if profile_rows:
             connection.executemany(
-                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 profile_rows,
             )
         connection.execute("COPY models TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(models_path)])

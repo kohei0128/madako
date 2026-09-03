@@ -38,6 +38,7 @@
 - dimension未指定時のOverall-only profile
 - `DataProfile.plan()` / `run()` / `profile()`を中心とする公開Python API
 - CLIのplan・profile処理を公開Python APIへ統合
+- STRINGの空文字をMissingへ含めるrelation単位の設定とNULL／空文字の内訳保持
 - artifact再import時の既存profile引き継ぎ
 - APIテストとWebのproduction build
 

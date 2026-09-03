@@ -49,6 +49,9 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | column_description | VARCHAR | No | dbt column description |
 | null_count | BIGINT | No | NULL Count |
 | null_rate | DOUBLE | No | 0から1のNULL Rate |
+| empty_string_count | BIGINT | No | STRINGの空文字（`''`）Count |
+| missing_count | BIGINT | No | 設定に応じたNULLと空文字の合算Count |
+| missing_rate | DOUBLE | No | 0から1のMissing Rate |
 | distinct_count | BIGINT | Yes | STRING用 |
 | min_value | VARCHAR | Yes | Numeric / DATE用 |
 | max_value | VARCHAR | Yes | Numeric / DATE用 |
@@ -67,6 +70,12 @@ Dimension profileは、同じ`dimension_name`に対してvalueごとのrowを持
 dimension_name  = "created_date"
 dimension_value = "2026-08-30"
 ```
+
+## NULLと空文字
+
+`meta.profiling.treat_empty_string_as_null`が有効な場合、STRINGでは`missing_count = null_count + empty_string_count`として保存する。無効な場合は`missing_count = null_count`となる。物理的なNULLと空文字は常に別列に保持し、意味を失わないようにする。
+
+この設定が有効なSTRINGのDistinctでは、`NULLIF(column, '')`を使って空文字を除外する。空白だけの文字列は空文字に含めず、将来別設定として扱う。
 
 ## min_value / max_value
 

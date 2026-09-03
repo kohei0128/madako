@@ -17,7 +17,7 @@ def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> s
     if not supported:
         raise ProfilingError(f"no supported columns found for {model.name}")
     if dimension is None:
-        overall_metrics = _aggregate_expressions(supported)
+        overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
         overall_structs = _metric_structs(supported)
         relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
         return f"""
@@ -43,8 +43,8 @@ ORDER BY column_order
     if dimension_column.data_type != "DATE":
         raise ProfilingError(f"pilot dimension must be DATE, got {dimension_column.data_type}")
 
-    overall_metrics = _aggregate_expressions(supported)
-    dimension_metrics = _aggregate_expressions(supported)
+    overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
+    dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
     overall_structs = _metric_structs(supported)
     dimension_structs = _metric_structs(supported)
     relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
@@ -132,13 +132,25 @@ def apply_profile(model: ModelProfile, rows: list[dict]) -> ModelProfile:
     return model.model_copy(update={"profiles": rows_to_profiles(model, rows), "profiled_at": datetime.now(UTC)})
 
 
-def _aggregate_expressions(columns: list[ColumnMetadata]) -> str:
+def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_null: bool) -> str:
     expressions: list[str] = []
     for index, column in enumerate(columns):
         quoted = f"`{column.name}`"
         expressions.append(f"COUNTIF({quoted} IS NULL) AS m{index}_null_count")
         expressions.append(
-            f"COUNT(DISTINCT {quoted}) AS m{index}_distinct_count"
+            f"COUNTIF({quoted} = '') AS m{index}_empty_string_count"
+            if column.data_type == "STRING" else f"0 AS m{index}_empty_string_count"
+        )
+        missing_condition = (
+            f"{quoted} IS NULL OR {quoted} = ''"
+            if column.data_type == "STRING" and treat_empty_string_as_null
+            else f"{quoted} IS NULL"
+        )
+        expressions.append(f"COUNTIF({missing_condition}) AS m{index}_missing_count")
+        expressions.append(
+            f"COUNT(DISTINCT NULLIF({quoted}, '')) AS m{index}_distinct_count"
+            if column.data_type == "STRING" and treat_empty_string_as_null
+            else f"COUNT(DISTINCT {quoted}) AS m{index}_distinct_count"
             if column.data_type == "STRING" else f"CAST(NULL AS INT64) AS m{index}_distinct_count"
         )
         expressions.append(
@@ -165,6 +177,9 @@ def _metric_structs(columns: list[ColumnMetadata]) -> str:
       '{column.data_type}' AS column_type,
       m{index}_null_count AS null_count,
       SAFE_DIVIDE(m{index}_null_count, record_count) AS null_rate,
+      m{index}_empty_string_count AS empty_string_count,
+      m{index}_missing_count AS missing_count,
+      SAFE_DIVIDE(m{index}_missing_count, record_count) AS missing_rate,
       m{index}_distinct_count AS distinct_count,
       m{index}_min_value AS min_value,
       m{index}_max_value AS max_value,
@@ -189,6 +204,9 @@ def _row_to_column(row: dict, metadata: ColumnMetadata) -> ColumnProfile:
         description=metadata.description,
         null_count=int(row["null_count"]),
         null_rate=float(row.get("null_rate") or 0),
+        empty_string_count=int(row.get("empty_string_count") or 0),
+        missing_count=int(row.get("missing_count", row["null_count"])),
+        missing_rate=float(row.get("missing_rate", row.get("null_rate")) or 0),
         distinct_count=int(row["distinct_count"]) if row.get("distinct_count") is not None else None,
         min_value=min_value,
         max_value=max_value,

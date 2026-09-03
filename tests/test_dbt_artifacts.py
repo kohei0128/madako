@@ -28,6 +28,9 @@ def test_reads_tsubo_models_and_sources() -> None:
     assert zaim.profiling.enabled is True
     assert zaim.profiling.dimensions == ["as_of_date"]
     assert zaim.profiling.max_bytes_billed == 1_000_000_000
+    money_forward = next(item for item in resources if item.name == "pl_money_forward")
+    assert money_forward.profiling.enabled is True
+    assert money_forward.profiling.treat_empty_string_as_null is True
 
 
 def test_artifact_storage_round_trip(tmp_path: Path) -> None:
