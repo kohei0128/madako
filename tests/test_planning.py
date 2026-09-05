@@ -115,7 +115,7 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
         "event_date",
         "processed_date",
     ]
-    assert updated[0].profiled_at is not None
+    assert execution.models[0].profiled_at is not None
 
 
 def test_execute_plan_rejects_all_work_before_running_blocked_item() -> None:

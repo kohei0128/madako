@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from data_profile import DataProfile, ProfilePlan, ProfileResult
 from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from data_profile.storage import write_profile_storage
@@ -115,3 +117,47 @@ def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) 
     assert result.skipped == ()
     assert (tmp_path / "models.parquet").read_bytes() == models_before
     assert (tmp_path / "column_profiles.parquet").read_bytes() == profiles_before
+
+
+@pytest.mark.parametrize("bad_rows", [[], [{"column_name": "unknown"}]])
+def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_rows: list[dict]) -> None:
+    first = configured_model()
+    models = [first, first.model_copy(update={"name": "second", "unique_id": "model.test.second"}),
+              first.model_copy(update={"name": "third", "unique_id": "model.test.third"})]
+    paths = write_profile_storage(models, tmp_path)
+    before = [path.read_bytes() for path in paths]
+
+    class FakeWarehouse:
+        calls = 0
+
+        def estimate(self, sql, project, location):
+            assert (project, location) == ("billing", "US")
+            return 100
+
+        def execute(self, sql, project, location, max_bytes_billed):
+            assert (project, location, max_bytes_billed) == ("billing", "US", 10_000)
+            self.calls += 1
+            return profile_rows() if self.calls == 1 else bad_rows
+
+    adapter = FakeWarehouse()
+    app = DataProfile.from_storage(tmp_path, adapter=adapter)
+    result = app.profile(project="billing", location="US")
+    assert [item.status for item in result.items] == ["succeeded", "failed", "skipped"]
+    assert adapter.calls == 2
+    assert not result.storage_updated
+    assert not result.successful
+    assert result.profiled_models == ()
+    assert result.failed[0].error
+    assert [path.read_bytes() for path in paths] == before
+
+
+def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+
+    def fail_save(*args):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("data_profile.api.write_profile_storage", fail_save)
+    with pytest.raises(OSError, match="disk full"):
+        app.profile()

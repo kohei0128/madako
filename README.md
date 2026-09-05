@@ -87,6 +87,20 @@ UV_CACHE_DIR=.uv-cache uv run data-profile profile \
 
 ## Python API
 
+実行は`fail-fast`です。queryまたは結果変換に失敗すると後続を停止し、今回の結果は保存しません。
+
+```python
+result = app.profile(select="stg_zaim_transactions")
+for outcome in result.items:
+    print(outcome.item.model.unique_id, outcome.item.dimension,
+          outcome.status, outcome.row_count, outcome.error)
+print(result.successful, result.storage_updated)
+```
+
+`succeeded`はqueryと結果変換の成功を意味します。保存完了は`storage_updated`で判定し、`profiled_models`には保存できたモデルだけが入ります。`row_count`は取得したmetric rows数です。上限超過時は全項目が`skipped`になります。設定・dry-run・保存のエラーは例外として通知されます。CLIとサンプルスクリプトは実行失敗・skip時に終了コード1を返します。
+
+接続処理は`DataProfile.from_storage(path, adapter=...)`または`from_dbt_project(..., adapter=...)`で差し替えられます。既定の`BigQueryAdapter`はインストール済みの`bq`とその認証を使います。独自adapterは`WarehouseAdapter`の`estimate()`と`execute()`を実装します。SQL生成と結果schemaは現在BigQuery向けです。既存の`estimator=`／`runner=`指定は引き続き利用でき、指定された関数がadapterの対応メソッドに優先します。
+
 CLIと同じ処理は、公開Python APIからも実行できます。`from_dbt_project()`は既存の`target/manifest.json`と、存在すれば`catalog.json`をstorageへ取り込みます。`dbt parse`自体は暗黙には実行しません。
 
 ```python

@@ -259,6 +259,10 @@ data-profile import-dbt --project-dir <dbt-project> --output-dir <storage-dir>
 
 ## 次の開発段階
 
+2026-09-05: `ProfileResult.items`にrelation／dimension単位の実行結果を追加した。query・結果変換失敗時はfail-fastで後続をskipし、storageは更新しない。`succeeded`はquery・変換成功、`storage_updated`は保存完了を表す。保存とplan作成の失敗は例外として通知する。
+
+公開APIに`adapter=`を追加し、`WarehouseAdapter`経由で推定と実queryを実行する。既定の`BigQueryAdapter`は既存bq実装を利用する。SQL生成・結果変換はまだBigQuery固有。次はStorage境界・schema versioning・clean install検証を進める。
+
 dbt設定から対象とdimensionを解決し、実行前にSQLとcostを確認する独立したplanコマンドまで完了した。`stg_zaim_transactions`の実dry runでは44,762 bytesと見積もられ、1 GBの上限内で`READY`になった。
 
 完了済み:

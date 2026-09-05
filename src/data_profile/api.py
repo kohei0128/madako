@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from data_profile.bigquery_profile import dry_run, execute_profile
+from data_profile.bigquery_profile import ProfilingError
+from data_profile.warehouse import BigQueryAdapter, WarehouseAdapter
 from data_profile.models import ModelProfile
 from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
 from data_profile.repository import DuckDBProfileRepository
@@ -50,22 +51,25 @@ class DataProfile:
         self,
         storage_dir: str | Path,
         *,
-        estimator: Estimator = dry_run,
-        runner: Runner = execute_profile,
+        estimator: Estimator | None = None,
+        runner: Runner | None = None,
+        adapter: WarehouseAdapter | None = None,
     ) -> None:
         self.storage_dir = Path(storage_dir)
-        self._estimator = estimator
-        self._runner = runner
+        warehouse = adapter if adapter is not None else BigQueryAdapter()
+        self._estimator = estimator if estimator is not None else warehouse.estimate
+        self._runner = runner if runner is not None else warehouse.execute
 
     @classmethod
     def from_storage(
         cls,
         storage_dir: str | Path,
         *,
-        estimator: Estimator = dry_run,
-        runner: Runner = execute_profile,
+        estimator: Estimator | None = None,
+        runner: Runner | None = None,
+        adapter: WarehouseAdapter | None = None,
     ) -> "DataProfile":
-        return cls(storage_dir, estimator=estimator, runner=runner)
+        return cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter)
 
     @classmethod
     def from_dbt_project(
@@ -73,10 +77,11 @@ class DataProfile:
         project_dir: str | Path,
         storage_dir: str | Path,
         *,
-        estimator: Estimator = dry_run,
-        runner: Runner = execute_profile,
+        estimator: Estimator | None = None,
+        runner: Runner | None = None,
+        adapter: WarehouseAdapter | None = None,
     ) -> "DataProfile":
-        instance = cls(storage_dir, estimator=estimator, runner=runner)
+        instance = cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter)
         build_dbt_artifact_storage(Path(project_dir), instance.storage_dir)
         return instance
 
@@ -100,6 +105,8 @@ class DataProfile:
         return ProfilePlan(tuple(items))
 
     def run(self, plan: ProfilePlan) -> ProfileResult:
+        if not plan.items:
+            raise ProfilingError("cannot run an empty profile plan")
         models = self.models()
         execution = execute_profile_plan(models, list(plan.items), runner=self._runner)
         models_path = self.storage_dir / MODELS_FILENAME

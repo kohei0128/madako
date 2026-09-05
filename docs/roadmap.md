@@ -1,6 +1,6 @@
 # Data Profile Roadmap
 
-最終更新: 2026-09-03
+最終更新: 2026-09-05
 
 この文書は、現在のアプリを再利用可能なPythonライブラリへ育てるまでの順序と完了条件を示す。プロダクト要件は[product-requirements.md](product-requirements.md)、実装済み機能の詳細は[development-status.md](development-status.md)を正とする。
 
@@ -39,15 +39,17 @@ Python wheelは既に生成でき、`DataProfile`を公開入口として利用�
 - 全query成功後にstorageを1回だけ更新
 - Parquetをstageへ生成して読み戻し検証
 - file置換失敗時の既存storage復元
+- relation / dimension単位の`Succeeded / Failed / Skipped`結果
+- fail-fast：query・結果変換失敗時は後続skip、保存なし
+- Python APIの実行summaryとCLIの失敗終了コード
 
 残り:
 
-- relation / dimension単位の`Succeeded / Failed / Skipped`結果
-- 途中query失敗時の方針を`fail-fast`または`continue`として明示
-- 実行summaryと機械可読な終了結果
 - 複数の実relationを使ったend-to-end確認
 
 ## Phase 3: ライブラリ境界の安定化
+
+接続・推定・query実行の`WarehouseAdapter`と既定の`BigQueryAdapter`を追加済み。公開APIの`adapter=`で差し替えられ、BigQueryなしの失敗・成功混在テストまで完了した。SQL生成と結果変換はBigQuery固有のままで、別warehouseへの対応は未実装。
 
 - `bq` subprocessを`WarehouseAdapter` interfaceの背後へ移す
 - BigQuery adapterの認証、dry run、query実行を単体テスト可能にする
@@ -77,7 +79,7 @@ Python wheelは既に生成でき、`DataProfile`を公開入口として利用�
 5. public API、config、storage schemaにversioning方針がある
 6. wheelをclean environmentへinstallし、サンプルdbt projectで動作確認できる
 
-現在は1と4が概ね完了している。次に2と3を終え、その後5と6を整備すればライブラリ公開へ進める。
+現在は1と3、および2の接続境界まで実装済み。4は通常の書き込み・置換エラーに対応しているが、複数fileの同時読み取りやprocess強制終了に対するtransaction保証は未完了。次はStorage境界とこの保証範囲を整理し、5と6を整備する。実relationでの複数対象確認も残る。
 
 ## 公開後の候補
 

@@ -103,6 +103,9 @@ def execute_profile_plan(
     for index, item in enumerate(plan):
         try:
             rows = runner(item.sql, item.project, item.location, item.max_bytes_billed)
+            profiles = rows_to_profiles(item.model, rows)
+            if not profiles or not any(profile.dimension_name is None for profile in profiles):
+                raise ProfilingError("query result is missing Overall metrics")
         except Exception as error:
             results.append(ProfileItemResult(item=item, status="failed", error=str(error)))
             results.extend(ProfileItemResult(
@@ -111,7 +114,6 @@ def execute_profile_plan(
                 error="not executed because an earlier item failed",
             ) for remaining in plan[index + 1:])
             return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
-        profiles = rows_to_profiles(item.model, rows)
         collected = profiles_by_model.setdefault(item.model.unique_id, [])
         if not collected:
             collected.extend(profile for profile in profiles if profile.dimension_name is None)
