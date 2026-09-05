@@ -55,12 +55,12 @@ config:
       treat_empty_string_as_null: true
 ```
 
-| 設定 | 既定値 | 意味 |
-|---|---|---|
-| enabled | false | profiling対象に含める |
-| dimensions | [] | 空ならOverallのみ。現在のquery生成はDATEのみ |
-| max_bytes_billed | 1000000000 | 正の整数bytes、queryごとの上限 |
-| treat_empty_string_as_null | false | STRINGの`''`をMissingへ算入し、Distinctから除外 |
+| 設定                       | 既定値     | 意味                                            |
+| -------------------------- | ---------- | ----------------------------------------------- |
+| enabled                    | false      | profiling対象に含める                           |
+| dimensions                 | []         | 空ならOverallのみ。現在のquery生成はDATEのみ    |
+| max_bytes_billed           | 1000000000 | 正の整数bytes、queryごとの上限                  |
+| treat_empty_string_as_null | false      | STRINGの`''`をMissingへ算入し、Distinctから除外 |
 
 空白だけの文字列は空文字に含めません。NULLと空文字の件数は別々に保存します。設定・カラム・relationなどが変わった状態で再importした場合、以前のprofileはクリアされるため再実行してください。
 
@@ -127,3 +127,8 @@ unit testは合成artifactと一時directoryを使い、実BigQueryや個人用d
 ## このrepositoryの実環境用例
 
 `examples/profile_tsubo.py`はローカルのtsubo project用です。既定ではenabledな全relationのdry runだけを行います。対象を限定する場合は`--select`、実queryを実行する場合は`--execute`を指定します。利用前にdbt artifactsを更新してください。
+
+UIにtsuboのprofileを反映する
+```
+uv run data-profile serve --storage-dir /tmp/tsubo-profile
+```
