@@ -5,8 +5,7 @@ from data_profile.bigquery_profile import ProfilingError
 from data_profile.warehouse import BigQueryAdapter, WarehouseAdapter
 from data_profile.models import ModelProfile
 from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
-from data_profile.repository import DuckDBProfileRepository
-from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, write_profile_storage
+from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
 
 
 @dataclass(frozen=True)
@@ -54,8 +53,10 @@ class DataProfile:
         estimator: Estimator | None = None,
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
+        storage: ProfileStorage | None = None,
     ) -> None:
         self.storage_dir = Path(storage_dir)
+        self._storage = storage if storage is not None else ParquetProfileStorage(self.storage_dir)
         warehouse = adapter if adapter is not None else BigQueryAdapter()
         self._estimator = estimator if estimator is not None else warehouse.estimate
         self._runner = runner if runner is not None else warehouse.execute
@@ -68,8 +69,9 @@ class DataProfile:
         estimator: Estimator | None = None,
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
+        storage: ProfileStorage | None = None,
     ) -> "DataProfile":
-        return cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter)
+        return cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter, storage=storage)
 
     @classmethod
     def from_dbt_project(
@@ -80,13 +82,14 @@ class DataProfile:
         estimator: Estimator | None = None,
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
+        storage: ProfileStorage | None = None,
     ) -> "DataProfile":
-        instance = cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter)
-        build_dbt_artifact_storage(Path(project_dir), instance.storage_dir)
+        instance = cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter, storage=storage)
+        import_dbt_profiles(Path(project_dir), instance._storage)
         return instance
 
     def models(self) -> list[ModelProfile]:
-        return self._repository().list_models()
+        return self._storage.load()
 
     def plan(
         self,
@@ -109,10 +112,9 @@ class DataProfile:
             raise ProfilingError("cannot run an empty profile plan")
         models = self.models()
         execution = execute_profile_plan(models, list(plan.items), runner=self._runner)
-        models_path = self.storage_dir / MODELS_FILENAME
-        profiles_path = self.storage_dir / PROFILES_FILENAME
+        models_path, profiles_path = self._storage.paths
         if execution.complete:
-            models_path, profiles_path = write_profile_storage(execution.models, self.storage_dir)
+            models_path, profiles_path = self._storage.save(execution.models)
         profiled_models = (
             tuple(dict.fromkeys(item.model.name for item in plan.items))
             if execution.complete else ()
@@ -134,9 +136,3 @@ class DataProfile:
         location: str = "asia-northeast1",
     ) -> ProfileResult:
         return self.run(self.plan(select=select, project=project, location=location))
-
-    def _repository(self) -> DuckDBProfileRepository:
-        return DuckDBProfileRepository(
-            self.storage_dir / MODELS_FILENAME,
-            self.storage_dir / PROFILES_FILENAME,
-        )

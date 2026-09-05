@@ -5,6 +5,7 @@ import pytest
 
 from data_profile.models import ColumnMetadata, ModelProfile
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, write_profile_storage
+from data_profile.storage import ParquetProfileStorage
 
 
 def model(description: str) -> ModelProfile:
@@ -18,6 +19,14 @@ def model(description: str) -> ModelProfile:
         materialization="table",
         columns=[ColumnMetadata(name="id", data_type="INT64")],
     )
+
+
+def test_incomplete_storage_is_not_treated_as_new(tmp_path: Path) -> None:
+    storage = ParquetProfileStorage(tmp_path)
+    assert not storage.exists()
+    (tmp_path / MODELS_FILENAME).touch()
+    with pytest.raises(ValueError, match="incomplete profile storage"):
+        storage.exists()
 
 
 def test_storage_replacement_restores_previous_files_on_failure(

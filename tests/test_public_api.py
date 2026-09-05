@@ -158,6 +158,42 @@ def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
     def fail_save(*args):
         raise OSError("disk full")
 
-    monkeypatch.setattr("data_profile.api.write_profile_storage", fail_save)
+    monkeypatch.setattr("data_profile.storage.ParquetProfileStorage.save", fail_save)
     with pytest.raises(OSError, match="disk full"):
         app.profile()
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: bool) -> None:
+    class MemoryStorage:
+        paths = (tmp_path / "custom-models", tmp_path / "custom-profiles")
+        saved = 0
+
+        def __init__(self):
+            self.data = [configured_model()]
+
+        def exists(self):
+            return True
+
+        def load(self):
+            return self.data
+
+        def save(self, models):
+            self.saved += 1
+            self.data = models
+            return self.paths
+
+    storage = MemoryStorage()
+
+    def run(*args):
+        if failure:
+            raise RuntimeError("query failure")
+        return profile_rows()
+
+    app = DataProfile.from_storage(tmp_path, storage=storage, estimator=lambda *_: 1, runner=run)
+    result = app.profile()
+    assert storage.saved == (0 if failure else 1)
+    assert result.successful is not failure
+    assert (result.models_path, result.profiles_path) == storage.paths
+    assert bool(app.models()[0].profiles) is not failure
+    assert not list(tmp_path.iterdir())

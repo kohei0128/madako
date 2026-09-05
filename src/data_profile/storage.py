@@ -4,6 +4,7 @@ import shutil
 import tempfile
 from datetime import date
 from pathlib import Path
+from typing import Protocol
 
 import duckdb
 
@@ -16,24 +17,60 @@ MODELS_FILENAME = "models.parquet"
 PROFILES_FILENAME = "column_profiles.parquet"
 
 
+class ProfileStorage(Protocol):
+    """Local storage contract; returned paths identify the persisted files."""
+
+    @property
+    def paths(self) -> tuple[Path, Path]: ...
+
+    def exists(self) -> bool: ...
+
+    def load(self) -> list[ModelProfile]: ...
+
+    def save(self, models: list[ModelProfile]) -> tuple[Path, Path]: ...
+
+
+class ParquetProfileStorage:
+    def __init__(self, directory: str | Path):
+        self.directory = Path(directory)
+
+    @property
+    def paths(self) -> tuple[Path, Path]:
+        return self.directory / MODELS_FILENAME, self.directory / PROFILES_FILENAME
+
+    def exists(self) -> bool:
+        present = [path.exists() for path in self.paths]
+        if any(present) and not all(present):
+            raise ValueError("incomplete profile storage: both Parquet files are required")
+        return all(present)
+
+    def load(self) -> list[ModelProfile]:
+        return DuckDBProfileRepository(*self.paths).list_models()
+
+    def save(self, models: list[ModelProfile]) -> tuple[Path, Path]:
+        return write_profile_storage(models, self.directory)
+
+
 def build_parquet_fixture(source_path: Path, output_dir: Path) -> tuple[Path, Path]:
     models = JsonProfileRepository(source_path).list_models()
     return write_profile_storage(models, output_dir)
 
 
 def build_dbt_artifact_storage(project_dir: Path, output_dir: Path) -> tuple[Path, Path]:
+    return import_dbt_profiles(project_dir, ParquetProfileStorage(output_dir))
+
+
+def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Path, Path]:
     models = read_dbt_artifacts(project_dir)
-    models_path = output_dir / MODELS_FILENAME
-    profiles_path = output_dir / PROFILES_FILENAME
-    if models_path.exists() and profiles_path.exists():
-        existing = {model.unique_id: model for model in DuckDBProfileRepository(models_path, profiles_path).list_models()}
+    if storage.exists():
+        existing = {model.unique_id: model for model in storage.load()}
         models = [
             model.model_copy(update={"profiles": previous.profiles, "profiled_at": previous.profiled_at})
             if (previous := existing.get(model.unique_id)) and previous.profiles
             else model
             for model in models
         ]
-    return write_profile_storage(models, output_dir)
+    return storage.save(models)
 
 
 def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple[Path, Path]:

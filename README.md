@@ -87,6 +87,10 @@ UV_CACHE_DIR=.uv-cache uv run data-profile profile \
 
 ## Python API
 
+保存は`ProfileStorage`（`paths / exists / load / save`）を通して行います。既定の`ParquetProfileStorage`は従来のローカルParquetを使用します。`DataProfile.from_storage(path, storage=...)`と`from_dbt_project(..., storage=...)`で独自の保存処理を指定でき、取込・plan・実行後保存が同じ保存先を使います。指定時はそのstorageを優先し、結果の保存パスもstorageから取得します。現在の契約はローカルの2ファイルを前提としています。
+
+Parquet更新では生成・検証後にファイルを順番に置換し、通常の置換エラー時は復元します。複数ファイルを同時に切り替えるtransactionではないため、同時更新・更新中の読み取り・強制終了時の整合性は保証しません。現段階では書き込みを直列化し、更新完了後に読み込んでください。
+
 実行は`fail-fast`です。queryまたは結果変換に失敗すると後続を停止し、今回の結果は保存しません。
 
 ```python

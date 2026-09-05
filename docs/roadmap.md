@@ -49,11 +49,13 @@ Python wheelは既に生成でき、`DataProfile`を公開入口として利用�
 
 ## Phase 3: ライブラリ境界の安定化
 
+Storage境界も実装済み。`ProfileStorage`を公開し、既定の`ParquetProfileStorage`をAPIの取込・読み込み・保存で共用する。保存先差し替え、query失敗時の保存抑止、不完全なParquet pairの検出をテストした。現在はローカル2ファイルの契約で、共有storageや世代単位の切替は未対応。
+
 接続・推定・query実行の`WarehouseAdapter`と既定の`BigQueryAdapter`を追加済み。公開APIの`adapter=`で差し替えられ、BigQueryなしの失敗・成功混在テストまで完了した。SQL生成と結果変換はBigQuery固有のままで、別warehouseへの対応は未実装。
 
 - `bq` subprocessを`WarehouseAdapter` interfaceの背後へ移す
 - BigQuery adapterの認証、dry run、query実行を単体テスト可能にする
-- Parquet保存を`ProfileStorage` interfaceの背後へ移す
+- 完了：Parquet保存を`ProfileStorage` interfaceの背後へ移す
 - `ProfilePlan` / `ProfileResult` / 例外のpublic contractを固定する
 - CLIとWeb serverがpublic APIだけを利用する状態にする
 

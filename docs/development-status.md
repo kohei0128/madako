@@ -259,6 +259,8 @@ data-profile import-dbt --project-dir <dbt-project> --output-dir <storage-dir>
 
 ## 次の開発段階
 
+Storage境界の分離まで完了。`DataProfile`は`ProfileStorage`経由で取込・読み込み・保存し、既定実装は`ParquetProfileStorage`。片方だけ存在する保存先は不完全として再取込を拒否する。通常の置換失敗の復元は行うが、同時アクセスやprocess強制終了へのtransaction保証はない。次はschema versioningとclean environmentでのinstall検証を進める。
+
 2026-09-05: `ProfileResult.items`にrelation／dimension単位の実行結果を追加した。query・結果変換失敗時はfail-fastで後続をskipし、storageは更新しない。`succeeded`はquery・変換成功、`storage_updated`は保存完了を表す。保存とplan作成の失敗は例外として通知する。
 
 公開APIに`adapter=`を追加し、`WarehouseAdapter`経由で推定と実queryを実行する。既定の`BigQueryAdapter`は既存bq実装を利用する。SQL生成・結果変換はまだBigQuery固有。次はStorage境界・schema versioning・clean install検証を進める。
