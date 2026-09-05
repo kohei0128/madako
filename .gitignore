@@ -10,3 +10,6 @@ web/*.tsbuildinfo
 web/vite.config.js
 web/vite.config.d.ts
 fixtures/
+
+.data-profile/
+dist/

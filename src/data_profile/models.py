@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 MetricValue = str | int | float | bool | date | None
@@ -40,8 +40,8 @@ class ProfileSlice(BaseModel):
 
     @model_validator(mode="after")
     def validate_dimension_pair(self) -> "ProfileSlice":
-        if (self.dimension_name is None) != (self.dimension_value is None):
-            raise ValueError("dimension_name and dimension_value must both be set or both be null")
+        if self.dimension_name is None and self.dimension_value is not None:
+            raise ValueError("Overall must have a null dimension_value")
         return self
 
 
@@ -49,6 +49,12 @@ class ColumnMetadata(BaseModel):
     name: str
     data_type: str
     description: str = ""
+
+    @field_validator("data_type")
+    @classmethod
+    def normalize_type(cls, value: str) -> str:
+        value = value.upper()
+        return {"INTEGER": "INT64", "FLOAT": "FLOAT64", "BOOLEAN": "BOOL"}.get(value, value)
 
 
 class ProfilingConfig(BaseModel):
@@ -73,3 +79,16 @@ class ModelProfile(BaseModel):
     profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
     profiled_at: datetime | None = None
     profiles: list[ProfileSlice] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def ensure_unique_id(self) -> "ModelProfile":
+        if not self.unique_id:
+            self.unique_id = f"{self.resource_type}.{self.database}.{self.schema_name}.{self.name}"
+        return self
+
+    def profiling_signature(self) -> str:
+        """Inputs whose changes invalidate a plan or previously calculated metrics."""
+        return self.model_dump_json(include={
+            "unique_id", "resource_type", "name", "database", "schema_name",
+            "relation_name", "materialization", "columns", "profiling",
+        })

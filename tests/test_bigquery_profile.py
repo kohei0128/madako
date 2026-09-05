@@ -98,3 +98,33 @@ def test_reconstructs_separate_null_empty_and_missing_metrics() -> None:
     assert column.empty_string_count == 2
     assert column.missing_count == 3
     assert column.missing_rate == 0.3
+
+
+def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
+    import pytest
+    from data_profile import bigquery_profile as bq
+    monkeypatch.setattr(bq, "MAX_RESULT_ROWS", 2)
+    monkeypatch.setattr(bq, "_run_bq", lambda _: [{}, {}])
+    with pytest.raises(bq.ProfilingError, match="row limit"):
+        bq.execute_profile("sql", "project", "US", 1000)
+
+
+def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
+    import pytest
+    from data_profile import bigquery_profile as bq
+    for payload in [{}, [], {"statistics": {"totalBytesProcessed": -1}}]:
+        monkeypatch.setattr(bq, "_run_bq", lambda _, payload=payload: payload)
+        with pytest.raises(bq.ProfilingError):
+            bq.dry_run("sql", "project", "US")
+
+
+def test_type_aliases_generate_metrics() -> None:
+    alias_model = model().model_copy(update={"columns": [
+        ColumnMetadata(name="integer", data_type="integer"),
+        ColumnMetadata(name="float", data_type="FLOAT"),
+        ColumnMetadata(name="boolean", data_type="BOOLEAN"),
+    ]})
+    sql = generate_profile_sql(alias_model)
+    assert "MIN(`integer`)" in sql
+    assert "MAX(`float`)" in sql
+    assert "COUNTIF(`boolean` IS TRUE)" in sql

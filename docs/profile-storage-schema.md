@@ -1,9 +1,13 @@
 # Profile Storage Schema
 
+最終更新: 2026-09-05
+
+現在のschema versionは**1**。両ファイルに`schema_version`列を持つ。
+
 MVPのローカル保存は、model metadataとcolumn profileを2つのParquet fileに分ける。
 
 ```text
-fixtures/parquet/
+.data-profile/
 ├── models.parquet
 └── column_profiles.parquet
 ```
@@ -16,9 +20,10 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 
 | Column | DuckDB type | Null | Description |
 |---|---|---|---|
-| unique_id | VARCHAR | No | dbt unique ID |
+| schema_version | INTEGER | No | 現在は1 |
+| unique_id | VARCHAR | No | dbt unique ID。relationの識別子 |
 | resource_type | VARCHAR | No | modelまたはsource |
-| model_name | VARCHAR | No | model / sourceの一意な名前 |
+| model_name | VARCHAR | No | model / sourceの表示名。同名を許容 |
 | database_name | VARCHAR | No | database / BigQuery project |
 | schema_name | VARCHAR | No | schema / BigQuery dataset |
 | relation_name | VARCHAR | No | Warehouse上のrelation名 |
@@ -38,10 +43,11 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 
 | Column | DuckDB type | Null | Description |
 |---|---|---|---|
-| model_name | VARCHAR | No | `models.parquet`への参照 |
+| schema_version | INTEGER | No | 現在は1 |
+| unique_id | VARCHAR | No | `models.parquet.unique_id`への参照 |
 | profile_order | INTEGER | No | APIへ再構築する際のprofile表示順 |
 | dimension_name | VARCHAR | Yes | OverallではNULL |
-| dimension_value | VARCHAR | Yes | OverallではNULL |
+| dimension_value | VARCHAR | Yes | OverallまたはdimensionのNULL bucketではNULL |
 | record_count | BIGINT | No | 対象sliceの行数 |
 | column_order | INTEGER | No | dbt上のcolumn表示順 |
 | column_name | VARCHAR | No | column名 |
@@ -71,6 +77,16 @@ dimension_name  = "created_date"
 dimension_value = "2026-08-30"
 ```
 
+DATE columnがNULLのbucketは`dimension_name="event_date", dimension_value=NULL`として保存する。Overallとはdimension名で区別する。UIでは日付の並び・最新partitionから除外して別表示する。
+
+## 互換性と再生成
+
+version列のない既存ファイルは旧形式として扱う。旧形式は`model_name`参照のため、名前が一意な場合だけ読み込む。読み込める旧データは次の正常な保存でv1になる。同名relationがある旧形式や未対応versionは読み取りを拒否する。
+
+曖昧な旧形式は既存directoryを保持し、別directoryへ`import-dbt`してから`profile`を実行する。結果を確認後、`serve --storage-dir`を新しいdirectoryに変更する。失われたrelationとの対応は推測して移行しない。
+
+`unique_id`未指定の手動データでは`resource_type.database.schema.name`を補完する。保存時はID重複を拒否する。
+
 ## NULLと空文字
 
 `meta.profiling.treat_empty_string_as_null`が有効な場合、STRINGでは`missing_count = null_count + empty_string_count`として保存する。無効な場合は`missing_count = null_count`となる。物理的なNULLと空文字は常に別列に保持し、意味を失わないようにする。
@@ -92,4 +108,16 @@ Parquet columnは単一の物理型を必要とするが、Min / MaxはNumeric�
 
 MVPではprofile historyを保持せず、常に最新の2 filesを読み取る。更新時は同じfilesystem上のstage directoryへ両方を書き出し、DuckDBで読み戻せることを検証してから`os.replace`で置き換える。
 
-置換前のfilesはstage内へbackupし、途中のfile置換に失敗した場合は両方を復元する。これにより通常の生成・置換エラーでは直前の正常なstorageを維持する。OS processがfile間の置換中に強制終了するケースまで単一transactionにするには、将来generation pointer方式を検討する。
+置換前のfilesはstage内へbackupし、途中のfile置換に失敗した場合は両方の復元を試みる。復元が成功した場合はstageを削除して元の例外を通知する。復元にも失敗した場合はstageと両方のbackupを保持し、`StorageRecoveryError`で復旧directoryを通知する。
+
+書き込みは直列化し、更新完了後に読み込む。複数ファイルの同時切替、同時writer、強制終了のtransaction保証はない。世代directoryと参照先切替は未実装。
+
+## 復旧手順
+
+1. `StorageRecoveryError`が発生したら、該当storageの読み書きを止める。
+2. 例外の`recovery_dir`にある`models.parquet.backup`と`column_profiles.parquet.backup`を別の安全なdirectoryへコピーして保全する。
+3. 書き込み権限やdisk空き容量など、元のエラー原因を解消する。
+4. **両方のbackup**を元のstorage directoryの対応するファイルへ戻す。復元中はAPIも停止しておく。
+5. `DataProfile.from_storage(path).models()`で読み取りを確認してからAPIを再開する。確認後にstage directoryを削除する。
+
+初回保存などbackup pairが揃わない場合は、stageを保全したまま新directoryへ再import・再profileする。強制終了後に残ったstageも同様に自動復旧対象ではない。

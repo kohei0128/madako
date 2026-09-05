@@ -6,7 +6,8 @@ import uvicorn
 from data_profile.api import DataProfile, ProfilePlan
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
-from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, build_dbt_artifact_storage, build_parquet_fixture
+from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, ParquetProfileStorage, build_parquet_fixture
+from data_profile.sample import sample_models
 
 
 def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
@@ -33,18 +34,18 @@ def main() -> None:
     serve.add_argument(
         "--storage-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "fixtures" / "parquet",
+        default=Path(".data-profile"),
     )
-    build_sample = subparsers.add_parser("build-sample", help="Build sample Parquet files from JSON")
+    build_sample = subparsers.add_parser("build-sample", help="Build sample Parquet files from synthetic data or JSON")
     build_sample.add_argument(
         "--source",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "fixtures" / "sample_profiles.json",
+        help="Optional JSON input; defaults to the bundled synthetic example",
     )
     build_sample.add_argument(
         "--output-dir",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "fixtures" / "parquet",
+        default=Path(".data-profile"),
     )
     import_dbt = subparsers.add_parser("import-dbt", help="Import dbt artifacts into Parquet storage")
     import_dbt.add_argument("--project-dir", type=Path, required=True)
@@ -69,11 +70,15 @@ def main() -> None:
         )
         uvicorn.run(create_app(repository), host=args.host, port=args.port)
     elif args.command == "build-sample":
-        models_path, profiles_path = build_parquet_fixture(args.source, args.output_dir)
+        models_path, profiles_path = (
+            build_parquet_fixture(args.source, args.output_dir) if args.source
+            else ParquetProfileStorage(args.output_dir).save(sample_models())
+        )
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
     elif args.command == "import-dbt":
-        models_path, profiles_path = build_dbt_artifact_storage(args.project_dir, args.output_dir)
+        DataProfile.from_dbt_project(args.project_dir, args.output_dir)
+        models_path, profiles_path = ParquetProfileStorage(args.output_dir).paths
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
     elif args.command == "plan":

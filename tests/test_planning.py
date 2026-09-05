@@ -149,3 +149,13 @@ def test_execute_plan_marks_failure_and_skips_remaining_items() -> None:
     assert execution.complete is False
     assert [result.status for result in execution.results] == ["failed", "skipped"]
     assert execution.results[0].error == "query failed"
+
+
+def test_ambiguous_selector_requires_unique_id_before_estimation() -> None:
+    first = configured_model()
+    second = first.model_copy(update={"unique_id": "source.test.raw.events"})
+    calls = []
+    with pytest.raises(ProfilingError, match="ambiguous selector"):
+        create_profile_plan([first, second], selector="events", estimator=lambda *_: calls.append(True) or 1)
+    assert not calls
+    assert create_profile_plan([first, second], selector=second.unique_id, estimator=lambda *_: 1)[0].model.unique_id == second.unique_id

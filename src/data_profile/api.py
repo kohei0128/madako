@@ -14,7 +14,7 @@ class ProfilePlan:
 
     @property
     def executable(self) -> bool:
-        return all(item.executable for item in self.items)
+        return bool(self.items) and all(item.executable for item in self.items)
 
     @property
     def estimated_bytes(self) -> int:

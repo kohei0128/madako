@@ -17,6 +17,7 @@ class ProfilePlanItem:
     estimated_bytes: int
     max_bytes_billed: int
     skipped_columns: tuple[str, ...]
+    model_signature: str = ""
 
     @property
     def executable(self) -> bool:
@@ -53,6 +54,8 @@ def create_profile_plan(
     enabled = [model for model in models if model.profiling.enabled]
     if selector:
         enabled = [model for model in enabled if selector in {model.name, model.unique_id}]
+        if len(enabled) > 1:
+            raise ProfilingError("ambiguous selector; use a unique_id")
         if not enabled:
             raise ProfilingError(f"selector did not match an enabled relation: {selector}")
     if not enabled:
@@ -67,7 +70,7 @@ def create_profile_plan(
             sql = generate_profile_sql(model, dimension)
             estimated = estimator(sql, query_project, location)
             plan.append(ProfilePlanItem(
-                model=model,
+                model=model.model_copy(deep=True),
                 dimension=dimension,
                 sql=sql,
                 project=query_project,
@@ -75,6 +78,7 @@ def create_profile_plan(
                 estimated_bytes=estimated,
                 max_bytes_billed=model.profiling.max_bytes_billed,
                 skipped_columns=skipped,
+                model_signature=model.profiling_signature(),
             ))
     return plan
 
@@ -85,6 +89,14 @@ def execute_profile_plan(
     *,
     runner: Runner = execute_profile,
 ) -> ProfilePlanExecution:
+    current = {model.unique_id: model for model in models}
+    if len(current) != len(models):
+        raise ProfilingError("duplicate relation unique_id")
+    for item in plan:
+        model = current.get(item.model.unique_id)
+        if (model is None or model.profiling_signature() != item.model_signature
+                or item.model.profiling_signature() != item.model_signature):
+            raise ProfilingError("stale or modified plan; create a new plan before running")
     blocked = [item for item in plan if not item.executable]
     if blocked:
         results = tuple(ProfileItemResult(
@@ -103,9 +115,7 @@ def execute_profile_plan(
     for index, item in enumerate(plan):
         try:
             rows = runner(item.sql, item.project, item.location, item.max_bytes_billed)
-            profiles = rows_to_profiles(item.model, rows)
-            if not profiles or not any(profile.dimension_name is None for profile in profiles):
-                raise ProfilingError("query result is missing Overall metrics")
+            profiles = rows_to_profiles(item.model, rows, dimension=item.dimension, validate=True)
         except Exception as error:
             results.append(ProfileItemResult(item=item, status="failed", error=str(error)))
             results.extend(ProfileItemResult(

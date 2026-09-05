@@ -17,6 +17,14 @@ MODELS_FILENAME = "models.parquet"
 PROFILES_FILENAME = "column_profiles.parquet"
 
 
+class StorageRecoveryError(OSError):
+    """Replacement and rollback failed; recovery files must remain available."""
+
+    def __init__(self, recovery_dir: Path):
+        self.recovery_dir = recovery_dir
+        super().__init__(f"storage rollback failed; stop readers/writers and recover from {recovery_dir}")
+
+
 class ProfileStorage(Protocol):
     """Local storage contract; returned paths identify the persisted files."""
 
@@ -56,10 +64,6 @@ def build_parquet_fixture(source_path: Path, output_dir: Path) -> tuple[Path, Pa
     return write_profile_storage(models, output_dir)
 
 
-def build_dbt_artifact_storage(project_dir: Path, output_dir: Path) -> tuple[Path, Path]:
-    return import_dbt_profiles(project_dir, ParquetProfileStorage(output_dir))
-
-
 def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Path, Path]:
     models = read_dbt_artifacts(project_dir)
     if storage.exists():
@@ -67,6 +71,7 @@ def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Pat
         models = [
             model.model_copy(update={"profiles": previous.profiles, "profiled_at": previous.profiled_at})
             if (previous := existing.get(model.unique_id)) and previous.profiles
+            and previous.profiling_signature() == model.profiling_signature()
             else model
             for model in models
         ]
@@ -78,14 +83,21 @@ def write_profile_storage(models: list[ModelProfile], output_dir: Path) -> tuple
     models_path = output_dir / MODELS_FILENAME
     profiles_path = output_dir / PROFILES_FILENAME
 
-    with tempfile.TemporaryDirectory(prefix=".profile-stage-", dir=output_dir) as temporary:
-        stage_dir = Path(temporary)
+    stage_dir = Path(tempfile.mkdtemp(prefix=".profile-stage-", dir=output_dir))
+    preserve_recovery = False
+    try:
         staged_models, staged_profiles = _write_profile_storage_files(models, stage_dir)
         DuckDBProfileRepository(staged_models, staged_profiles).list_models()
         _replace_storage_files(
             ((staged_models, models_path), (staged_profiles, profiles_path)),
             stage_dir,
         )
+    except StorageRecoveryError:
+        preserve_recovery = True
+        raise
+    finally:
+        if not preserve_recovery:
+            shutil.rmtree(stage_dir)
 
     return models_path, profiles_path
 
@@ -96,10 +108,14 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
 
     model_rows: list[tuple] = []
     profile_rows: list[tuple] = []
+    ids = [model.unique_id for model in models]
+    if len(ids) != len(set(ids)):
+        raise ValueError("duplicate relation unique_id")
     for model in models:
         columns = model.columns or _columns_from_profiles(model)
         model_rows.append((
-            model.unique_id or f"{model.resource_type}.{model.name}",
+            1,
+            model.unique_id,
             model.resource_type,
             model.name,
             model.database,
@@ -116,7 +132,8 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
         for profile_order, profile in enumerate(model.profiles):
             for column_order, column in enumerate(profile.columns):
                 profile_rows.append((
-                    model.name,
+                    1,
+                    model.unique_id,
                     profile_order,
                     profile.dimension_name,
                     profile.dimension_value,
@@ -139,6 +156,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
     with duckdb.connect() as connection:
         connection.execute("""
             CREATE TABLE models (
+                schema_version INTEGER NOT NULL,
                 unique_id VARCHAR NOT NULL,
                 resource_type VARCHAR NOT NULL,
                 model_name VARCHAR NOT NULL,
@@ -154,10 +172,12 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                 profiled_at VARCHAR
             )
         """)
-        connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
+        if model_rows:
+            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
         connection.execute("""
             CREATE TABLE column_profiles (
-                model_name VARCHAR NOT NULL,
+                schema_version INTEGER NOT NULL,
+                unique_id VARCHAR NOT NULL,
                 profile_order INTEGER NOT NULL,
                 dimension_name VARCHAR,
                 dimension_value VARCHAR,
@@ -179,7 +199,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
         """)
         if profile_rows:
             connection.executemany(
-                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 profile_rows,
             )
         connection.execute("COPY models TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(models_path)])
@@ -201,13 +221,24 @@ def _replace_storage_files(files: tuple[tuple[Path, Path], ...], stage_dir: Path
         for staged, target in files:
             os.replace(staged, target)
             replaced.append(target)
-    except Exception:
+    except Exception as error:
+        failures = []
         backed_up_targets = {target for _, target in backups}
         for backup, target in backups:
-            os.replace(backup, target)
+            try:
+                restore = stage_dir / f"{target.name}.restore"
+                shutil.copy2(backup, restore)
+                os.replace(restore, target)
+            except OSError as recovery_error:
+                failures.append(recovery_error)
         for target in replaced:
             if target not in backed_up_targets and target.exists():
-                target.unlink()
+                try:
+                    target.unlink()
+                except OSError as recovery_error:
+                    failures.append(recovery_error)
+        if failures:
+            raise StorageRecoveryError(stage_dir) from error
         raise
 
 

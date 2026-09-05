@@ -197,3 +197,89 @@ def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: 
     assert (result.models_path, result.profiles_path) == storage.paths
     assert bool(app.models()[0].profiles) is not failure
     assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.parametrize("change", ["remove", "config", "schema", "mutate_plan"])
+def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
+    from data_profile import ProfilingError
+    model = configured_model()
+    write_profile_storage([model], tmp_path)
+    calls = []
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: calls.append(True) or profile_rows())
+    plan = app.plan()
+    if change == "remove":
+        write_profile_storage([], tmp_path)
+    elif change == "config":
+        model.profiling.max_bytes_billed = 1
+        write_profile_storage([model], tmp_path)
+    elif change == "schema":
+        model.columns.pop()
+        write_profile_storage([model], tmp_path)
+    else:
+        plan.items[0].model.columns.pop()
+    with pytest.raises(ProfilingError, match="stale or modified plan"):
+        app.run(plan)
+    assert not calls
+
+
+@pytest.mark.parametrize("bad_result", ["column", "duplicate", "bucket", "record_count", "type", "rate"])
+def test_incomplete_results_preserve_existing_storage(tmp_path: Path, bad_result: str) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    assert app.profile().successful
+    before = [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]]
+    rows = profile_rows()
+    if bad_result == "column":
+        rows.pop()
+    elif bad_result == "duplicate":
+        rows.append(rows[-1].copy())
+    elif bad_result == "bucket":
+        rows = rows[:2]
+    elif bad_result == "record_count":
+        rows[-1]["record_count"] = "5"
+    elif bad_result == "type":
+        rows[-1]["column_type"] = "STRING"
+    else:
+        rows[-1]["null_rate"] = "0.5"
+    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: rows).profile()
+    assert not result.successful
+    assert result.failed
+    assert [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]] == before
+
+
+def test_null_date_bucket_is_saved_separately_from_overall(tmp_path: Path) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    rows = profile_rows()
+    for row in rows[2:]:
+        row["dimension_value"] = None
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: rows)
+    assert app.profile().successful
+    profiles = app.models()[0].profiles
+    assert [(profile.dimension_name, profile.dimension_value) for profile in profiles] == [(None, None), ("event_date", None)]
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch, changed: bool) -> None:
+    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+    model = configured_model()
+    write_profile_storage([model], tmp_path)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    assert app.profile().successful
+    model.profiling.treat_empty_string_as_null = changed
+    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [model])
+    import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
+    persisted = app.models()[0]
+    assert bool(persisted.profiles) is not changed
+    assert (persisted.profiled_at is not None) is not changed
+
+
+def test_empty_table_has_overall_without_date_buckets(tmp_path: Path) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    rows = profile_rows()[:2]
+    for row in rows:
+        row.update(record_count="0", min_value=None, max_value=None, null_rate=None)
+    app = DataProfile(tmp_path, estimator=lambda *_: 0, runner=lambda *_: rows)
+    assert app.profile().successful
+    persisted = app.models()[0]
+    assert len(persisted.profiles) == 1
+    assert persisted.profiles[0].record_count == 0

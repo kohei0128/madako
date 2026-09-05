@@ -4,11 +4,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from data_profile.models import ModelProfile
-from data_profile.repository import DuckDBProfileRepository, ProfileNotFoundError, ProfileRepository
+from data_profile.repository import AmbiguousProfileError, DuckDBProfileRepository, ProfileNotFoundError, ProfileRepository
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME
 
 
-DEFAULT_STORAGE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "parquet"
+DEFAULT_STORAGE_DIR = Path(".data-profile")
 
 
 def create_app(repository: ProfileRepository | None = None) -> FastAPI:
@@ -29,17 +29,22 @@ def create_app(repository: ProfileRepository | None = None) -> FastAPI:
         return {"status": "ok"}
 
     @app.get("/api/models", response_model=list[ModelProfile], response_model_by_alias=True)
-    async def list_models() -> list[ModelProfile]:
-        return repository.list_models()
+    def list_models(include_profiles: bool = True) -> list[ModelProfile]:
+        if not include_profiles and isinstance(repository, DuckDBProfileRepository):
+            return repository.list_metadata()
+        models = repository.list_models()
+        return models if include_profiles else [model.model_copy(update={"profiles": []}) for model in models]
 
     @app.get(
         "/api/models/{model_name}/profile",
         response_model=ModelProfile,
         response_model_by_alias=True,
     )
-    async def get_profile(model_name: str) -> ModelProfile:
+    def get_profile(model_name: str) -> ModelProfile:
         try:
             return repository.get_model(model_name)
+        except AmbiguousProfileError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         except ProfileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Model profile not found") from error
 

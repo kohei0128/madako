@@ -1,8 +1,11 @@
 import json
 import subprocess
-from datetime import UTC, datetime
+from math import isclose
 
 from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
+
+
+MAX_RESULT_ROWS = 100_000
 
 
 SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "BOOL", "DATE"}
@@ -41,7 +44,7 @@ ORDER BY column_order
     if dimension_column is None:
         raise ProfilingError(f"dimension column not found: {dimension}")
     if dimension_column.data_type != "DATE":
-        raise ProfilingError(f"pilot dimension must be DATE, got {dimension_column.data_type}")
+        raise ProfilingError(f"dimension must be DATE, got {dimension_column.data_type}")
 
     overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
     dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
@@ -93,21 +96,31 @@ def dry_run(sql: str, project: str, location: str) -> int:
         "bq", "query", f"--project_id={project}", f"--location={location}",
         "--use_legacy_sql=false", "--dry_run", "--format=json", sql,
     ])
-    return int(payload.get("statistics", {}).get("totalBytesProcessed", 0))
+    try:
+        estimate = int(payload["statistics"]["totalBytesProcessed"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ProfilingError("dry run did not return a valid byte estimate") from error
+    if estimate < 0:
+        raise ProfilingError("dry run returned a negative byte estimate")
+    return estimate
 
 
 def execute_profile(sql: str, project: str, location: str, max_bytes_billed: int) -> list[dict]:
     payload = _run_bq([
         "bq", "query", f"--project_id={project}", f"--location={location}",
         "--use_legacy_sql=false", f"--maximum_bytes_billed={max_bytes_billed}",
-        "--format=json", "--max_rows=100000", sql,
+        "--format=json", f"--max_rows={MAX_RESULT_ROWS}", sql,
     ])
     if not isinstance(payload, list):
         raise ProfilingError("unexpected BigQuery result")
+    if len(payload) >= MAX_RESULT_ROWS:
+        raise ProfilingError("query result reached the row limit; refusing potentially truncated metrics")
     return payload
 
 
-def rows_to_profiles(model: ModelProfile, rows: list[dict]) -> list[ProfileSlice]:
+def rows_to_profiles(
+    model: ModelProfile, rows: list[dict], *, dimension: str | None = None, validate: bool = False,
+) -> list[ProfileSlice]:
     columns = {column.name: column for column in model.columns}
     grouped: dict[tuple[str | None, str | None], list[dict]] = {}
     for row in rows:
@@ -117,6 +130,13 @@ def rows_to_profiles(model: ModelProfile, rows: list[dict]) -> list[ProfileSlice
     profiles: list[ProfileSlice] = []
     for (dimension_name, dimension_value), metric_rows in grouped.items():
         metric_rows.sort(key=lambda row: int(row["column_order"]))
+        if validate:
+            expected = {column.name: column.data_type for column in model.columns if column.data_type in SUPPORTED_TYPES}
+            actual = {row["column_name"]: row["column_type"] for row in metric_rows}
+            if actual != expected or len(metric_rows) != len(expected):
+                raise ProfilingError("query result has missing, duplicate or mismatched columns")
+            if len({int(row["record_count"]) for row in metric_rows}) != 1:
+                raise ProfilingError("query result has inconsistent record counts")
         profile_columns = [_row_to_column(row, columns[row["column_name"]]) for row in metric_rows]
         profiles.append(ProfileSlice(
             dimension_name=dimension_name,
@@ -125,11 +145,35 @@ def rows_to_profiles(model: ModelProfile, rows: list[dict]) -> list[ProfileSlice
             columns=profile_columns,
         ))
     profiles.sort(key=lambda profile: (profile.dimension_name is not None, profile.dimension_name or "", profile.dimension_value or ""))
+    if validate:
+        _validate_profiles(model, profiles, dimension)
     return profiles
 
 
-def apply_profile(model: ModelProfile, rows: list[dict]) -> ModelProfile:
-    return model.model_copy(update={"profiles": rows_to_profiles(model, rows), "profiled_at": datetime.now(UTC)})
+def _validate_profiles(model: ModelProfile, profiles: list[ProfileSlice], dimension: str | None) -> None:
+    overall = [profile for profile in profiles if profile.dimension_name is None]
+    if len(overall) != 1:
+        raise ProfilingError("query result is missing Overall metrics")
+    buckets = [profile for profile in profiles if profile.dimension_name is not None]
+    if any(profile.dimension_name != dimension for profile in buckets):
+        raise ProfilingError("query result contains an unexpected dimension")
+    if dimension is not None and sum(profile.record_count for profile in buckets) != overall[0].record_count:
+        raise ProfilingError("dimension record counts do not match Overall; result may be incomplete")
+    for profile in profiles:
+        for column in profile.columns:
+            expected_missing = column.null_count + (
+                column.empty_string_count
+                if model.profiling.treat_empty_string_as_null and column.data_type == "STRING" else 0
+            )
+            if (column.missing_count != expected_missing
+                    or column.null_count + column.empty_string_count > profile.record_count
+                    or column.null_count + (column.true_count or 0) > profile.record_count
+                    or (column.distinct_count or 0) > profile.record_count - column.missing_count):
+                raise ProfilingError("query result has inconsistent metric counts")
+            for count, rate in [(column.null_count, column.null_rate), (column.missing_count, column.missing_rate)]:
+                expected_rate = count / profile.record_count if profile.record_count else 0
+                if not isclose(rate, expected_rate, rel_tol=1e-6, abs_tol=1e-9):
+                    raise ProfilingError("query result has inconsistent metric rates")
 
 
 def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_null: bool) -> str:

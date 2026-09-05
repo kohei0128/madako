@@ -74,7 +74,8 @@ function CompactMetrics({ column, slice }: { column: ColumnProfile; slice: Profi
 }
 
 function isTemporal(profiles: ProfileSlice[]): boolean {
-  return profiles.length > 0 && profiles.every((profile) => /^\d{4}-\d{2}-\d{2}$/.test(profile.dimension_value ?? ""));
+  const values = profiles.filter((profile) => profile.dimension_value !== null);
+  return values.length > 0 && values.every((profile) => /^\d{4}-\d{2}-\d{2}$/.test(profile.dimension_value ?? ""));
 }
 
 function heatIntensity(rate: number): number {
@@ -112,7 +113,7 @@ function TemporalTable({ profiles, filter, range, includeEmpty }: { profiles: Pr
             const rate = metric.rate;
             return <span key={profile.dimension_value} className={point ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
               style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-              title={`${profile.dimension_value}: ${point ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(point, includeEmpty)}` : "No data"}`} />;
+              title={`${profile.dimension_value ?? "NULL"}: ${point ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(point, includeEmpty)}` : "No data"}`} />;
           })}
         </div><small className="trend-dates"><span>{visibleProfiles[0]?.dimension_value}</span><span>{latest.dimension_value}</span></small></td>
         <td className="latest-value">{(missingMetric(column, includeEmpty).rate * 100).toFixed(1)}%<small title={missingDetail(column, includeEmpty)}>{missingMetric(column, includeEmpty).count.toLocaleString()} {includeEmpty ? "missing" : "nulls"}</small><small>{previousColumn ? `prev. ${(missingMetric(previousColumn, includeEmpty).rate * 100).toFixed(1)}%` : ""}</small></td>
@@ -131,7 +132,7 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
   if (!first) return <>—</>;
   if (first.data_type === "STRING") {
     const values = points.flatMap(({ column }) => column.distinct_count === null ? [] : [column.distinct_count]);
-    return <PairMetric leftLabel="Min distinct" leftValue={Math.min(...values).toLocaleString()} rightLabel="Max distinct" rightValue={Math.max(...values).toLocaleString()} />;
+    return <PairMetric leftLabel="Min distinct" leftValue={values.length ? Math.min(...values).toLocaleString() : "—"} rightLabel="Max distinct" rightValue={values.length ? Math.max(...values).toLocaleString() : "—"} />;
   }
   if (first.data_type === "BOOL") {
     const rates = points.map(({ column, profile }) => profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0);
@@ -139,8 +140,8 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
   }
   const minimums = points.flatMap(({ column }) => column.min_value === null ? [] : [column.min_value]);
   const maximums = points.flatMap(({ column }) => column.max_value === null ? [] : [column.max_value]);
-  const min = first.data_type === "DATE" ? minimums.map(String).sort()[0] : Math.min(...minimums.map(Number));
-  const max = first.data_type === "DATE" ? maximums.map(String).sort().at(-1) : Math.max(...maximums.map(Number));
+  const min = minimums.length === 0 ? null : first.data_type === "DATE" ? minimums.map(String).sort()[0] : Math.min(...minimums.map(Number));
+  const max = maximums.length === 0 ? null : first.data_type === "DATE" ? maximums.map(String).sort().at(-1) : Math.max(...maximums.map(Number));
   return <PairMetric leftLabel="Min" leftValue={String(min ?? "—")} rightLabel="Max" rightValue={String(max ?? "—")} />;
 }
 
@@ -159,7 +160,7 @@ function CategoricalTable({ profiles, filter, dimensionName, includeEmpty }: { p
         const rate = column ? missingMetric(column, includeEmpty).rate : 0;
         return <span key={profile.dimension_value} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
           style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-          title={`${dimensionName} = ${profile.dimension_value}: ${column ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(column, includeEmpty)}` : "No data"}`} />;
+          title={`${dimensionName} = ${profile.dimension_value ?? "NULL"}: ${column ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(column, includeEmpty)}` : "No data"}`} />;
       })}</div><small className="dimension-count">{profiles.length} values · hover to inspect</small></td>
       <td><DimensionMetricSummary profiles={profiles} columnName={baseColumn.name} /></td>
     </tr>)}</tbody>
@@ -176,19 +177,42 @@ function App() {
   const [error, setError] = useState("");
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
 
+  const [detail, setDetail] = useState<ModelProfile | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
   useEffect(() => {
-    fetch("/api/models").then((response) => {
+    const controller = new AbortController();
+    setError("");
+    fetch("/api/models?include_profiles=false", { signal: controller.signal }).then((response) => {
       if (!response.ok) throw new Error("Could not load profiles");
       return response.json() as Promise<ModelProfile[]>;
     }).then((data) => {
       setModels(data);
-      setSelectedModel(data[0]?.name ?? "");
+      setSelectedModel((current) => data.some((item) => item.unique_id === current) ? current : data[0]?.unique_id ?? "");
+      setLoaded(true);
       if (data[0]) setExpandedDatasets(new Set([`${data[0].database}/${data[0].schema}`]));
     })
-      .catch((reason: Error) => setError(reason.message));
-  }, []);
+      .catch((reason: Error) => { if (reason.name !== "AbortError") setError(reason.message); });
+    return () => controller.abort();
+  }, [revision]);
 
-  const model = models.find((item) => item.name === selectedModel);
+  useEffect(() => {
+    if (!selectedModel) return;
+    const controller = new AbortController();
+    setDetail(null);
+    setError("");
+    fetch(`/api/models/${encodeURIComponent(selectedModel)}/profile`, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) throw new Error("Could not load model profile");
+        return response.json() as Promise<ModelProfile>;
+      })
+      .then((data) => { setDetail(data); setSliceIndex(0); })
+      .catch((reason: Error) => { if (reason.name !== "AbortError") setError(reason.message); });
+    return () => controller.abort();
+  }, [selectedModel, revision]);
+
+  const model = detail?.unique_id === selectedModel ? detail : null;
   const includeEmpty = model?.profiling.treat_empty_string_as_null ?? false;
   const slice = model?.profiles[sliceIndex];
   const overallSlice = model?.profiles.find((profile) => profile.dimension_name === null);
@@ -197,9 +221,9 @@ function App() {
   )), [model]);
   const activeDimension = slice?.dimension_name ?? null;
   const dimensionSlices = model?.profiles.filter((profile) => profile.dimension_name === activeDimension) ?? [];
-  const temporalDimension = activeDimension !== null && isTemporal(dimensionSlices);
+  const temporalDimension = activeDimension !== null && (isTemporal(dimensionSlices) || model?.columns.some((column) => column.name === activeDimension && column.data_type === "DATE"));
   const latestDimensionSlice = temporalDimension
-    ? [...dimensionSlices].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? "")).at(-1)
+    ? dimensionSlices.filter((profile) => profile.dimension_value !== null).sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? "")).at(-1)
     : undefined;
   const summarySlice = latestDimensionSlice ?? slice;
   const visibleColumns = summarySlice?.columns.filter((column) => matchesType(column, typeFilter)) ?? [];
@@ -256,7 +280,7 @@ function App() {
     <aside className="explorer">
       <div className="brand">data profile <span>alpha</span></div>
       <label className="search"><span>Search models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model name" /></label>
-      <div className="tree-label">Explorer</div>
+      <div className="tree-label">Explorer <button onClick={() => setRevision((value) => value + 1)}>Refresh</button></div>
       {[...explorerGroups].sort(([left], [right]) => left.localeCompare(right)).map(([database, datasets]) => <div className="project-group" key={database}>
         <div className="project-name"><span>◆</span>{database}</div>
         {[...datasets].sort(([left], [right]) => left.localeCompare(right)).map(([schema, relations]) => {
@@ -266,7 +290,7 @@ function App() {
             <button className={`dataset-item ${isOpen ? "open" : ""}`} onClick={() => toggleDataset(datasetKey)} aria-expanded={isOpen}>
               <span className="chevron">›</span><span className="dataset-icon">▤</span><span>{schema}</span><small>{relations.length}</small>
             </button>
-            {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.name === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.name); setSliceIndex(0); setTypeFilter("all"); }}>
+            {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.unique_id === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.unique_id); setSliceIndex(0); setTypeFilter("all"); }}>
               <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.resource_type}</small>{item.name}</span>
             </button>)}</div>}
           </div>;
@@ -276,7 +300,7 @@ function App() {
 
     <section className="detail">
       {error && <div className="notice error">{error}. Is the API running?</div>}
-      {!model && !error && <div className="notice">Loading profile…</div>}
+      {!model && !error && <div className="notice">{loaded && models.length === 0 ? "No models imported" : "Loading profile…"}</div>}
       {model && !slice && <>
         <header>
           <div className="title-row"><h1>{model.name}</h1><span className="pill">{model.materialization}</span></div>
@@ -323,7 +347,11 @@ function App() {
           <table><thead>{renderHeaders()}</thead><tbody>{visibleColumns.map((column) => <tr key={column.name}>{renderCells(column)}</tr>)}</tbody></table>
           {visibleColumns.length === 0 && <div className="empty-state">No columns match this type.</div>}
         </div>}
-        {temporalDimension && <TemporalTable profiles={dimensionSlices} filter={typeFilter} range={trendRange} includeEmpty={includeEmpty} />}
+        {temporalDimension && <TemporalTable profiles={dimensionSlices.filter((profile) => profile.dimension_value !== null)} filter={typeFilter} range={trendRange} includeEmpty={includeEmpty} />}
+        {temporalDimension && dimensionSlices.some((profile) => profile.dimension_value === null) && <>
+          <p>NULL partition · {dimensionSlices.find((profile) => profile.dimension_value === null)?.record_count.toLocaleString()} rows</p>
+          <CategoricalTable profiles={dimensionSlices.filter((profile) => profile.dimension_value === null)} filter={typeFilter} dimensionName={activeDimension!} includeEmpty={includeEmpty} />
+        </>}
         {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} includeEmpty={includeEmpty} />}
       </>}
     </section>

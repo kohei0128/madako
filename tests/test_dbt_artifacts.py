@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -5,59 +6,84 @@ import pytest
 from data_profile import DataProfile
 from data_profile.dbt_artifacts import ArtifactError, read_dbt_artifacts
 from data_profile.repository import DuckDBProfileRepository
-from data_profile.storage import build_dbt_artifact_storage
+from data_profile.storage import ParquetProfileStorage
 
 
-TSUBO_PROJECT = Path(__file__).resolve().parents[3] / "dbt" / "tsubo"
+@pytest.fixture
+def dbt_project(tmp_path: Path) -> Path:
+    project = tmp_path / "project"
+    target = project / "target"
+    target.mkdir(parents=True)
+    model = {
+        "unique_id": "model.demo.events", "resource_type": "model", "package_name": "demo",
+        "name": "events", "alias": "events", "database": "project", "schema": "analytics",
+        "columns": {"event_date": {"data_type": "DATE", "description": "Event date"},
+                    "amount": {"data_type": "INTEGER"}},
+        "config": {"materialized": "view", "meta": {"profiling": {
+            "enabled": True, "dimensions": ["event_date"], "max_bytes_billed": 1000,
+        }}},
+    }
+    source = {**model, "unique_id": "source.demo.raw.events", "resource_type": "source",
+              "identifier": "raw_events", "schema": "raw",
+              "config": {"meta": {"profiling": {"enabled": True, "treat_empty_string_as_null": True}}}}
+    manifest = {
+        "metadata": {"project_name": "demo", "generated_at": "2026-09-01T00:00:00Z"},
+        "nodes": {model["unique_id"]: model,
+                  "model.other.ignored": {**model, "unique_id": "model.other.ignored", "package_name": "other"},
+                  "test.demo.date": {"resource_type": "test", "test_metadata": {"name": "not_null"},
+                                     "depends_on": {"nodes": [model["unique_id"]]}}},
+        "sources": {source["unique_id"]: source},
+    }
+    catalog = {
+        "metadata": {"generated_at": "2026-08-31T00:00:00Z"},
+        "nodes": {model["unique_id"]: {"columns": {
+            "amount": {"type": "INTEGER", "index": 2}, "event_date": {"type": "DATE", "index": 1},
+        }}},
+    }
+    (target / "manifest.json").write_text(json.dumps(manifest))
+    (target / "catalog.json").write_text(json.dumps(catalog))
+    return project
 
 
-def test_reads_tsubo_models_and_sources() -> None:
+def test_reads_models_sources_and_catalog(dbt_project: Path) -> None:
     with pytest.warns(UserWarning, match="catalog.json is older"):
-        resources = read_dbt_artifacts(TSUBO_PROJECT)
-
-    assert len([item for item in resources if item.resource_type == "model"]) == 10
-    assert len([item for item in resources if item.resource_type == "source"]) == 4
-    zaim = next(item for item in resources if item.name == "stg_zaim_transactions")
-    assert zaim.database == "northern-bliss-362623"
-    assert zaim.schema_name == "tsubo_staging"
-    assert zaim.materialization == "view"
-    assert zaim.profiles == []
-    assert zaim.columns[0].name == "as_of_date"
-    assert zaim.columns[0].data_type == "DATE"
-    assert "not_null" in zaim.tests
-    assert zaim.profiling.enabled is True
-    assert zaim.profiling.dimensions == ["as_of_date"]
-    assert zaim.profiling.max_bytes_billed == 1_000_000_000
-    money_forward = next(item for item in resources if item.name == "pl_money_forward")
-    assert money_forward.profiling.enabled is True
-    assert money_forward.profiling.treat_empty_string_as_null is True
+        resources = read_dbt_artifacts(dbt_project)
+    assert len(resources) == 2
+    model = next(item for item in resources if item.resource_type == "model")
+    source = next(item for item in resources if item.resource_type == "source")
+    assert model.materialization == "view"
+    assert model.profiles == []
+    assert [(column.name, column.data_type) for column in model.columns] == [("event_date", "DATE"), ("amount", "INT64")]
+    assert model.tests == ["not_null"]
+    assert model.profiling.dimensions == ["event_date"]
+    assert model.profiling.max_bytes_billed == 1000
+    assert source.profiling.treat_empty_string_as_null
+    assert source.relation_name == "`project.raw.raw_events`"
 
 
-def test_artifact_storage_round_trip(tmp_path: Path) -> None:
+def test_artifact_storage_round_trip(dbt_project: Path, tmp_path: Path) -> None:
     with pytest.warns(UserWarning):
-        models_path, profiles_path = build_dbt_artifact_storage(TSUBO_PROJECT, tmp_path)
+        DataProfile.from_dbt_project(dbt_project, tmp_path / "storage")
+        paths = ParquetProfileStorage(tmp_path / "storage").paths
+    repository = DuckDBProfileRepository(*paths)
+    assert len(repository.list_models()) == 2
+    assert all(resource.profiles == [] for resource in repository.list_models())
+    assert repository.get_model("model.demo.events").columns[1].data_type == "INT64"
 
-    repository = DuckDBProfileRepository(models_path, profiles_path)
-    resources = repository.list_models()
-    assert len(resources) == 14
-    assert all(resource.profiles == [] for resource in resources)
-    assert repository.get_model("stg_zaim_transactions").columns[10].data_type == "INT64"
 
-
-def test_public_api_loads_dbt_project_and_builds_plan(tmp_path: Path) -> None:
+def test_public_api_loads_dbt_project_and_builds_plan(dbt_project: Path, tmp_path: Path) -> None:
     with pytest.warns(UserWarning):
-        app = DataProfile.from_dbt_project(
-            TSUBO_PROJECT,
-            tmp_path,
-            estimator=lambda *_: 44_762,
-        )
+        app = DataProfile.from_dbt_project(dbt_project, tmp_path / "storage", estimator=lambda *_: 100)
+    plan = app.plan(select="model.demo.events")
+    assert len(app.models()) == 2
+    assert plan.items[0].dimension == "event_date"
+    assert plan.estimated_bytes == 100
 
-    plan = app.plan(select="stg_zaim_transactions")
 
-    assert len(app.models()) == 14
-    assert len(plan.items) == 1
-    assert plan.items[0].dimension == "as_of_date"
-    assert plan.estimated_bytes == 44_762
+def test_manifest_only_fallback(dbt_project: Path) -> None:
+    (dbt_project / "target" / "catalog.json").unlink()
+    resources = read_dbt_artifacts(dbt_project)
+    assert resources[0].columns[1].data_type == "INT64"
 
 
 def test_missing_manifest_has_clear_error(tmp_path: Path) -> None:

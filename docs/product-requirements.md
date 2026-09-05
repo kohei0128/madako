@@ -2,7 +2,7 @@
 
 ## MVP要件定義
 
-> この文書はMVPのプロダクト要件を定義する。実装の進捗、要件を具体化する過程で決まったUI方針、当初案からの変更点は[development-status.md](development-status.md)を参照する。
+> この文書はMVPのプロダクト要件を定義する。未実装の要件も含む。実装の進捗、要件を具体化する過程で決まったUI方針、当初案からの変更点は[development-status.md](development-status.md)を参照する。
 
 ### 1. プロダクトの目的
 
@@ -249,7 +249,7 @@ FALSE Countは、
 
 # 9. Dimension Profiling
 
-MVPから対応する。
+MVPの対象とする。現在のSQL生成はDATE dimensionのみで、categorical dimensionは保存・表示まで対応している。
 
 テーブル全体のprofileだけでなく、
 
@@ -307,7 +307,7 @@ models:
             - source
 ```
 
-具体的なschemaは技術調査時に確定する。
+現在の設定schemaと既定値は[README](../README.md#dbt-projectの取り込みと実行)を参照する。
 
 ---
 
@@ -321,7 +321,7 @@ profiling対象はdbt設定側で制御する。
 * 特定model/sourceだけ個別にprofiling対象にする
 * 必要であれば個別modelで無効化 / 上書きする
 
-将来的にdbtのselection syntaxに近い`--select`を追加する可能性はあるが、MVP必須要件とはしない。
+現在は`--select`による`unique_id`または一意な名前の完全一致に対応する。dbt selection syntaxへの対応はMVP必須要件とはしない。
 
 ---
 
@@ -372,13 +372,13 @@ dbt run / dbt buildに近い操作感を目指す。
 
 > 勝手に高コストなqueryを実行しない。
 
-profiling queryに対して、ユーザーが最大処理量を設定できるようにする。
+profiling queryに対して、ユーザーが最大処理量を設定できるようにする。これはqueryごとの上限であり、複数relation実行全体の予算上限ではない。
 
 イメージ：
 
 ```yaml
 profiling:
-  max_bytes_billed: 10GB
+  max_bytes_billed: 1000000000  # bytes、queryごとの上限
 ```
 
 上限を超えるqueryは実行しない。
@@ -486,7 +486,7 @@ DuckDB側でdimension条件を変えることで、
 
 を切り替えて表示する。
 
-具体的なParquet schemaは実装時に確定する。
+具体的なParquet schemaと互換性方針は[Profile Storage Schema](profile-storage-schema.md)を参照する。relationは`unique_id`で識別し、同名のmodel/sourceを区別する。dimensionのNULL値もOverallとは別のbucketとして保持する。
 
 ---
 

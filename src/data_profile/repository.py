@@ -11,6 +11,20 @@ class ProfileNotFoundError(Exception):
     pass
 
 
+class AmbiguousProfileError(ValueError):
+    pass
+
+
+def _select_model(models: list[ModelProfile], identifier: str) -> ModelProfile:
+    matches = [model for model in models if model.unique_id == identifier]
+    matches = matches or [model for model in models if model.name == identifier]
+    if not matches:
+        raise ProfileNotFoundError(identifier)
+    if len(matches) > 1:
+        raise AmbiguousProfileError("ambiguous model name; use unique_id")
+    return matches[0]
+
+
 class ProfileRepository(Protocol):
     def list_models(self) -> list[ModelProfile]: ...
 
@@ -26,10 +40,7 @@ class JsonProfileRepository:
         return [ModelProfile.model_validate(item) for item in payload]
 
     def get_model(self, model_name: str) -> ModelProfile:
-        try:
-            return next(model for model in self.list_models() if model.name == model_name)
-        except StopIteration as error:
-            raise ProfileNotFoundError(model_name) from error
+        return _select_model(self.list_models(), model_name)
 
 
 class DuckDBProfileRepository:
@@ -38,62 +49,82 @@ class DuckDBProfileRepository:
         self.profiles_path = profiles_path
 
     def list_models(self) -> list[ModelProfile]:
+        return self._load()
+
+    def list_metadata(self) -> list[ModelProfile]:
+        return self._load(include_profiles=False)
+
+    def get_model(self, model_name: str) -> ModelProfile:
+        return self._load(identifier=model_name)[0]
+
+    @staticmethod
+    def _schema(connection: duckdb.DuckDBPyConnection, path: Path) -> set[str]:
+        columns = {row[0] for row in connection.execute(
+            "DESCRIBE SELECT * FROM read_parquet(?)", [str(path)],
+        ).fetchall()}
+        if "schema_version" in columns:
+            versions = connection.execute(
+                "SELECT DISTINCT schema_version FROM read_parquet(?)", [str(path)],
+            ).fetchall()
+            if any(version != (1,) for version in versions):
+                raise ValueError("unsupported profile storage schema version")
+        return columns
+
+    def _load(self, identifier: str | None = None, *, include_profiles: bool = True) -> list[ModelProfile]:
         with duckdb.connect() as connection:
-            profiling_expression = self._profiling_expression(connection)
+            model_columns = self._schema(connection, self.models_path)
+            profile_columns = self._schema(connection, self.profiles_path)
+            if ("schema_version" in model_columns) != ("schema_version" in profile_columns):
+                raise ValueError("inconsistent profile storage schema versions")
+            current = "schema_version" in profile_columns
+            if current and "unique_id" not in profile_columns:
+                raise ValueError("profile storage is missing unique_id")
+            profiling = "profiling_json" if "profiling_json" in model_columns else "'{}'"
             rows = connection.execute(
                 f"""
                 SELECT unique_id, resource_type, model_name, database_name, schema_name,
                        relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, {profiling_expression}, profiled_at
-                FROM read_parquet(?)
-                ORDER BY model_name
-                """,
-                [str(self.models_path)],
+                       columns_json, {profiling}, profiled_at
+                FROM read_parquet(?) ORDER BY model_name, unique_id
+                """, [str(self.models_path)],
             ).fetchall()
-        return [self._build_model(row) for row in rows]
+            ids = [row[0] for row in rows]
+            names = [row[2] for row in rows]
+            if len(ids) != len(set(ids)):
+                raise ValueError("duplicate relation unique_id in storage")
+            if not current and len(names) != len(set(names)):
+                raise ValueError("legacy storage has ambiguous model names; reimport into a new directory and reprofile")
+            if identifier is not None:
+                matches = [row for row in rows if row[0] == identifier]
+                matches = matches or [row for row in rows if row[2] == identifier]
+                if not matches:
+                    raise ProfileNotFoundError(identifier)
+                if len(matches) > 1:
+                    raise AmbiguousProfileError("ambiguous model name; use unique_id")
+                rows = matches
+            grouped: dict[str, list[tuple]] = {}
+            if include_profiles:
+                missing = ("empty_string_count, missing_count, missing_rate"
+                           if {"empty_string_count", "missing_count", "missing_rate"} <= profile_columns
+                           else "0, null_count, null_rate")
+                key = "unique_id" if current else "model_name"
+                keys = [row[0] if current else row[2] for row in rows]
+                profile_rows = connection.execute(
+                    f"""
+                    SELECT {key}, profile_order, dimension_name, dimension_value, record_count,
+                           column_name, column_type, column_description, null_count,
+                           null_rate, {missing}, distinct_count, min_value, max_value, true_count
+                    FROM read_parquet(?)
+                    WHERE {key} IN (SELECT unnest(?))
+                    ORDER BY {key}, profile_order, column_order
+                    """, [str(self.profiles_path), keys],
+                ).fetchall()
+                for profile_row in profile_rows:
+                    grouped.setdefault(profile_row[0], []).append(profile_row[1:])
+        return [self._build_model(row, grouped.get(row[0] if current else row[2], [])) for row in rows]
 
-    def get_model(self, model_name: str) -> ModelProfile:
-        with duckdb.connect() as connection:
-            profiling_expression = self._profiling_expression(connection)
-            row = connection.execute(
-                f"""
-                SELECT unique_id, resource_type, model_name, database_name, schema_name,
-                       relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, {profiling_expression}, profiled_at
-                FROM read_parquet(?)
-                WHERE model_name = ?
-                """,
-                [str(self.models_path), model_name],
-            ).fetchone()
-        if row is None:
-            raise ProfileNotFoundError(model_name)
-        return self._build_model(row)
-
-    def _profiling_expression(self, connection: duckdb.DuckDBPyConnection) -> str:
-        columns = connection.execute(
-            "DESCRIBE SELECT * FROM read_parquet(?)",
-            [str(self.models_path)],
-        ).fetchall()
-        names = {column[0] for column in columns}
-        return "profiling_json" if "profiling_json" in names else "'{}' AS profiling_json"
-
-    def _build_model(self, row: tuple) -> ModelProfile:
+    def _build_model(self, row: tuple, profile_rows: list[tuple]) -> ModelProfile:
         model_name = row[2]
-        with duckdb.connect() as connection:
-            missing_expressions = self._missing_expressions(connection)
-            profile_rows = connection.execute(
-                f"""
-                SELECT profile_order, dimension_name, dimension_value, record_count,
-                       column_name, column_type, column_description, null_count,
-                       null_rate, {missing_expressions}, distinct_count, min_value,
-                       max_value, true_count
-                FROM read_parquet(?)
-                WHERE model_name = ?
-                ORDER BY profile_order, column_order
-                """,
-                [str(self.profiles_path), model_name],
-            ).fetchall()
-
         slices: list[ProfileSlice] = []
         current_order: int | None = None
         current_columns: list[ColumnProfile] = []
@@ -149,16 +180,6 @@ class DuckDBProfileRepository:
             profiled_at=row[12],
             profiles=slices,
         )
-
-    def _missing_expressions(self, connection: duckdb.DuckDBPyConnection) -> str:
-        columns = connection.execute(
-            "DESCRIBE SELECT * FROM read_parquet(?)",
-            [str(self.profiles_path)],
-        ).fetchall()
-        names = {column[0] for column in columns}
-        if {"empty_string_count", "missing_count", "missing_rate"} <= names:
-            return "empty_string_count, missing_count, missing_rate"
-        return "0 AS empty_string_count, null_count AS missing_count, null_rate AS missing_rate"
 
     @staticmethod
     def _decode_value(value: str | None, column_type: str) -> str | int | float | None:

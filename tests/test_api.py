@@ -8,15 +8,13 @@ from pydantic import ValidationError
 
 from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
-from data_profile.storage import build_parquet_fixture
-
-
-SAMPLE_FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_profiles.json"
+from data_profile.storage import build_parquet_fixture, write_profile_storage
+from data_profile.sample import sample_models
 
 
 @pytest.fixture
 def repository(tmp_path: Path) -> DuckDBProfileRepository:
-    models_path, profiles_path = build_parquet_fixture(SAMPLE_FIXTURE, tmp_path)
+    models_path, profiles_path = write_profile_storage(sample_models(), tmp_path)
     return DuckDBProfileRepository(models_path, profiles_path)
 
 
@@ -30,26 +28,26 @@ def request(app, path: str) -> httpx.Response:
 
 
 def test_get_model_profile(repository: DuckDBProfileRepository) -> None:
-    response = request(create_app(repository), "/api/models/fct_applications/profile")
+    response = request(create_app(repository), "/api/models/events/profile")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["name"] == "fct_applications"
-    assert payload["schema"] == "marts"
-    assert payload["profiles"][0]["record_count"] == 12480
-    assert payload["profiles"][0]["columns"][2]["null_rate"] == 0.15
-    assert payload["profiles"][0]["columns"][2]["empty_string_count"] == 0
-    assert payload["profiles"][0]["columns"][2]["missing_rate"] == 0.15
-    assert payload["profiles"][0]["columns"][2]["min_value"] == 0.04
+    assert payload["name"] == "events"
+    assert payload["schema"] == "analytics"
+    assert payload["profiles"][0]["record_count"] == 10
+    assert payload["profiles"][0]["columns"][1]["null_rate"] == 0.5
+    assert payload["profiles"][0]["columns"][1]["empty_string_count"] == 0
+    assert payload["profiles"][0]["columns"][1]["missing_rate"] == 0.5
+    assert payload["profiles"][0]["columns"][1]["min_value"] == 1.5
 
 
 def test_date_and_categorical_profiles_are_reconstructed(repository: DuckDBProfileRepository) -> None:
-    model = repository.get_model("fct_applications")
+    model = repository.get_model("events")
 
-    date_profiles = [profile for profile in model.profiles if profile.dimension_name == "created_date"]
+    date_profiles = [profile for profile in model.profiles if profile.dimension_name == "event_date"]
     service_profiles = [profile for profile in model.profiles if profile.dimension_name == "service"]
-    assert len(date_profiles) == 45
-    assert date_profiles[-1].dimension_value == "2026-08-30"
+    assert len(date_profiles) == 3
+    assert {profile.dimension_value for profile in date_profiles} == {"2026-08-31", "2026-09-01", None}
     assert {profile.dimension_value for profile in service_profiles} == {"consumer", "business"}
 
 
@@ -83,3 +81,21 @@ def test_invalid_fixture_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError):
         build_parquet_fixture(fixture, tmp_path / "parquet")
+
+
+def test_metadata_list_omits_metrics(repository: DuckDBProfileRepository) -> None:
+    response = request(create_app(repository), "/api/models?include_profiles=false")
+    assert response.status_code == 200
+    assert response.json()[0]["profiles"] == []
+    assert response.json()[0]["columns"]
+    assert response.json()[0]["profiled_at"]
+
+
+def test_same_name_api_uses_unique_id(tmp_path: Path) -> None:
+    first = sample_models()[0]
+    second = first.model_copy(update={"unique_id": "source.demo.events", "profiles": [], "profiled_at": None})
+    repository = DuckDBProfileRepository(*write_profile_storage([first, second], tmp_path))
+    app = create_app(repository)
+    assert request(app, "/api/models/events/profile").status_code == 409
+    assert request(app, "/api/models/model.demo.events/profile").json()["profiles"]
+    assert request(app, "/api/models/source.demo.events/profile").json()["profiles"] == []
