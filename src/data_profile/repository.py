@@ -4,6 +4,7 @@ from typing import Protocol
 
 import duckdb
 
+from data_profile.exceptions import StorageFormatError
 from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 
 
@@ -11,7 +12,7 @@ class ProfileNotFoundError(Exception):
     pass
 
 
-class AmbiguousProfileError(ValueError):
+class AmbiguousProfileError(StorageFormatError):
     pass
 
 
@@ -67,7 +68,7 @@ class DuckDBProfileRepository:
                 "SELECT DISTINCT schema_version FROM read_parquet(?)", [str(path)],
             ).fetchall()
             if any(version != (1,) for version in versions):
-                raise ValueError("unsupported profile storage schema version")
+                raise StorageFormatError("unsupported profile storage schema version")
         return columns
 
     def _load(self, identifier: str | None = None, *, include_profiles: bool = True) -> list[ModelProfile]:
@@ -75,10 +76,10 @@ class DuckDBProfileRepository:
             model_columns = self._schema(connection, self.models_path)
             profile_columns = self._schema(connection, self.profiles_path)
             if ("schema_version" in model_columns) != ("schema_version" in profile_columns):
-                raise ValueError("inconsistent profile storage schema versions")
+                raise StorageFormatError("inconsistent profile storage schema versions")
             current = "schema_version" in profile_columns
             if current and "unique_id" not in profile_columns:
-                raise ValueError("profile storage is missing unique_id")
+                raise StorageFormatError("profile storage is missing unique_id")
             profiling = "profiling_json" if "profiling_json" in model_columns else "'{}'"
             rows = connection.execute(
                 f"""
@@ -91,9 +92,11 @@ class DuckDBProfileRepository:
             ids = [row[0] for row in rows]
             names = [row[2] for row in rows]
             if len(ids) != len(set(ids)):
-                raise ValueError("duplicate relation unique_id in storage")
+                raise StorageFormatError("duplicate relation unique_id in storage")
             if not current and len(names) != len(set(names)):
-                raise ValueError("legacy storage has ambiguous model names; reimport into a new directory and reprofile")
+                raise StorageFormatError(
+                    "legacy storage has ambiguous model names; reimport into a new directory and reprofile"
+                )
             if identifier is not None:
                 matches = [row for row in rows if row[0] == identifier]
                 matches = matches or [row for row in rows if row[2] == identifier]

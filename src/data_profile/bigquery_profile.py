@@ -2,6 +2,7 @@ import json
 import subprocess
 from math import isclose
 
+from data_profile.exceptions import ProfilingError, ResultValidationError, WarehouseError
 from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 
 
@@ -11,14 +12,10 @@ MAX_RESULT_ROWS = 100_000
 SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "BOOL", "DATE"}
 
 
-class ProfilingError(Exception):
-    pass
-
-
 def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> str:
     supported = [column for column in model.columns if column.data_type in SUPPORTED_TYPES]
     if not supported:
-        raise ProfilingError(f"no supported columns found for {model.name}")
+        raise ResultValidationError(f"no supported columns found for {model.name}")
     if dimension is None:
         overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
         overall_structs = _metric_structs(supported)
@@ -42,9 +39,9 @@ ORDER BY column_order
 
     dimension_column = next((column for column in model.columns if column.name == dimension), None)
     if dimension_column is None:
-        raise ProfilingError(f"dimension column not found: {dimension}")
+        raise ResultValidationError(f"dimension column not found: {dimension}")
     if dimension_column.data_type != "DATE":
-        raise ProfilingError(f"dimension must be DATE, got {dimension_column.data_type}")
+        raise ResultValidationError(f"dimension must be DATE, got {dimension_column.data_type}")
 
     overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
     dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
@@ -99,9 +96,9 @@ def dry_run(sql: str, project: str, location: str) -> int:
     try:
         estimate = int(payload["statistics"]["totalBytesProcessed"])
     except (KeyError, TypeError, ValueError) as error:
-        raise ProfilingError("dry run did not return a valid byte estimate") from error
+        raise WarehouseError("dry run did not return a valid byte estimate") from error
     if estimate < 0:
-        raise ProfilingError("dry run returned a negative byte estimate")
+        raise WarehouseError("dry run returned a negative byte estimate")
     return estimate
 
 
@@ -112,9 +109,9 @@ def execute_profile(sql: str, project: str, location: str, max_bytes_billed: int
         "--format=json", f"--max_rows={MAX_RESULT_ROWS}", sql,
     ])
     if not isinstance(payload, list):
-        raise ProfilingError("unexpected BigQuery result")
+        raise WarehouseError("unexpected BigQuery result")
     if len(payload) >= MAX_RESULT_ROWS:
-        raise ProfilingError("query result reached the row limit; refusing potentially truncated metrics")
+        raise ResultValidationError("query result reached the row limit; refusing potentially truncated metrics")
     return payload
 
 
@@ -134,9 +131,9 @@ def rows_to_profiles(
             expected = {column.name: column.data_type for column in model.columns if column.data_type in SUPPORTED_TYPES}
             actual = {row["column_name"]: row["column_type"] for row in metric_rows}
             if actual != expected or len(metric_rows) != len(expected):
-                raise ProfilingError("query result has missing, duplicate or mismatched columns")
+                raise ResultValidationError("query result has missing, duplicate or mismatched columns")
             if len({int(row["record_count"]) for row in metric_rows}) != 1:
-                raise ProfilingError("query result has inconsistent record counts")
+                raise ResultValidationError("query result has inconsistent record counts")
         profile_columns = [_row_to_column(row, columns[row["column_name"]]) for row in metric_rows]
         profiles.append(ProfileSlice(
             dimension_name=dimension_name,
@@ -153,12 +150,12 @@ def rows_to_profiles(
 def _validate_profiles(model: ModelProfile, profiles: list[ProfileSlice], dimension: str | None) -> None:
     overall = [profile for profile in profiles if profile.dimension_name is None]
     if len(overall) != 1:
-        raise ProfilingError("query result is missing Overall metrics")
+        raise ResultValidationError("query result is missing Overall metrics")
     buckets = [profile for profile in profiles if profile.dimension_name is not None]
     if any(profile.dimension_name != dimension for profile in buckets):
-        raise ProfilingError("query result contains an unexpected dimension")
+        raise ResultValidationError("query result contains an unexpected dimension")
     if dimension is not None and sum(profile.record_count for profile in buckets) != overall[0].record_count:
-        raise ProfilingError("dimension record counts do not match Overall; result may be incomplete")
+        raise ResultValidationError("dimension record counts do not match Overall; result may be incomplete")
     for profile in profiles:
         for column in profile.columns:
             expected_missing = column.null_count + (
@@ -169,11 +166,11 @@ def _validate_profiles(model: ModelProfile, profiles: list[ProfileSlice], dimens
                     or column.null_count + column.empty_string_count > profile.record_count
                     or column.null_count + (column.true_count or 0) > profile.record_count
                     or (column.distinct_count or 0) > profile.record_count - column.missing_count):
-                raise ProfilingError("query result has inconsistent metric counts")
+                raise ResultValidationError("query result has inconsistent metric counts")
             for count, rate in [(column.null_count, column.null_rate), (column.missing_count, column.missing_rate)]:
                 expected_rate = count / profile.record_count if profile.record_count else 0
                 if not isclose(rate, expected_rate, rel_tol=1e-6, abs_tol=1e-9):
-                    raise ProfilingError("query result has inconsistent metric rates")
+                    raise ResultValidationError("query result has inconsistent metric rates")
 
 
 def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_null: bool) -> str:
@@ -262,13 +259,13 @@ def _run_bq(command: list[str]) -> dict | list:
     try:
         result = subprocess.run(command, check=True, capture_output=True, text=True)
     except FileNotFoundError as error:
-        raise ProfilingError("bq CLI was not found") from error
+        raise WarehouseError("bq CLI was not found") from error
     except subprocess.CalledProcessError as error:
-        raise ProfilingError(error.stderr.strip() or "BigQuery command failed") from error
+        raise WarehouseError(error.stderr.strip() or "BigQuery command failed") from error
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as error:
-        raise ProfilingError("could not parse bq output") from error
+        raise WarehouseError("could not parse bq output") from error
 
 
 def _escape_string(value: str) -> str:

@@ -93,10 +93,14 @@ print(result.successful, result.storage_updated)
 - カラム不足・重複、件数・率の不整合を拒否します。取得上限100,000 metric rowsに到達した場合も保存を拒否します。
 - `succeeded`はqueryと変換の成功、`row_count`は取得したmetric rows数です。
 - `storage_updated`は保存完了を示します。`profiled_models`は保存できたmodelの表示名です。同名relationの識別には`items[].item.model.unique_id`を使います。
-- 設定・dry-run・古いplan・保存のエラーは例外です。query／変換の失敗は`ProfileResult`に格納します。例外体系の統一は未完了です。
+- 設定・dry-run・古いplan・保存のエラーは公開例外で通知します。query／変換の失敗は`ProfileResult`に格納します。
 - CLIのprofileは実行失敗・skip時に終了コード1を返します。
 
-`adapter=`には`WarehouseAdapter`の`estimate()` / `execute()`を実装するオブジェクトを指定できます。既定は`BigQueryAdapter`です。SQL生成・結果schemaは現在BigQuery向けです。`estimator=` / `runner=`を指定するとadapterの対応メソッドより優先します。
+`adapter=`には`WarehouseAdapter`を実装するオブジェクトを指定できます。完全なadapterは`supported_types`、`build_profile_query()`、`estimate()`、`execute()`、`parse_profile_rows()`を持ち、SQL生成から結果変換までを所有します。既定の`BigQueryAdapter`はBigQuery SQLと`bq` CLIを使用します。
+
+0.1の互換性のため、`estimate()` / `execute()`だけを持つ既存adapterも利用できます。この場合、SQL生成・結果変換は`BigQueryAdapter`で補完されます。`estimator=` / `runner=`は対応する実行関数だけを上書きし、生成・変換には選択したadapterを使います。
+
+公開例外の基底は`DataProfileError`です。用途別に`ArtifactError`、`PlanningError`、`WarehouseError`、`ResultValidationError`、`StorageError`を公開しています。従来の`ProfilingError`はplanning・warehouse・result validationをまとめて捕捉する互換用の基底です。保存実装の予期しない失敗は`StorageOperationError`へ包み、元の例外を`__cause__`に保持します。
 
 `storage=`には`ProfileStorage`の`paths / exists / load / save`を実装するオブジェクトを指定できます。既定は`ParquetProfileStorage`で、独自storageは取込・plan・保存で共用されます。現在の契約はローカル2ファイルのパスを含みます。Web serverは別のrepository契約を使用します。
 

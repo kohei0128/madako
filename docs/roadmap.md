@@ -51,14 +51,15 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 完了済み:
 
 - WarehouseAdapterによる推定・query実行の差し替え
+- WarehouseAdapterによる対応型・SQL生成・結果変換の差し替え
 - ProfileStorageによるimport・load・saveの差し替え
 - Parquet schema v1、旧形式の読み取り条件と移行・再生成手順
+- DataProfileErrorを基底とする公開例外体系と、旧ProfilingErrorの互換性
 
 残る作業:
 
-- SQL生成・結果変換までWarehouse境界を整理する
 - Web serverのrepository契約と公開Storage APIの関係を整理する
-- ProfilePlan / ProfileResult / 例外のpublic contractを固定する
+- ProfilePlan / ProfileResultのpublic contractを固定する
 - config schemaのversioningと非互換変更の方針を決める
 - 世代切替・読み取りsnapshot・writer制御により同時アクセスと強制終了を扱う
 

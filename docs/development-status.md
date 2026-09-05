@@ -23,7 +23,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 | Profiling | OverallとDATE dimension、型別metrics、NULL bucket | categoricalは保存・表示のみ。SQL生成はDATE dimensionだけ |
 | 型 | STRING / INT64 / FLOAT64 / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | NUMERIC、TIMESTAMP、複合型などは除外 |
 | 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存 | 実BigQueryの複数relation E2Eは未確認 |
-| Warehouse | WarehouseAdapter / BigQueryAdapter、推定とquery実行の差し替え | SQL生成と結果変換はBigQuery依存 |
+| Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
 | Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh | ブラウザの自動操作テストは未整備 |
 | テスト・サンプル | 合成データによるsampleとdbt artifactテスト | 実環境のE2EとCIは別途必要 |
@@ -38,6 +38,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 - `succeeded`はqueryと変換の成功。`storage_updated`は保存完了。保存・plan作成の失敗は例外となる。
 - 保存時は2ファイルをstageへ生成し、読み戻し検証後に順次置換する。復元にも失敗した場合はbackupを保持し、`StorageRecoveryError.recovery_dir`で場所を通知する。
 - artifact再import時は、同じ`unique_id`かつschema・profiling設定などの入力が一致する場合にprofileを引き継ぐ。不一致ではprofileと実行日時をクリアする。
+- 公開例外は`DataProfileError`を基底にartifact・planning・warehouse・result・storageへ分類する。従来の`ProfilingError`は互換用の基底として維持する。
 
 各queryは独立した実行であり、複数relation／dimension間でWarehouseの同一snapshotを保証しない。書き込みは直列化し、書き込み完了後に読み込む。
 
@@ -60,7 +61,7 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test、Web production build、wheel / sdist buildを実行した。作業directory外の一時venvでwheel install・import・sample生成・読み取りを確認し、Git管理外の個人用データを含まないsourceコピーでもunit testを確認した。
+Python unit test、Web production build、wheel / sdist buildを実行した。作業directory外の一時venvでwheel install・import・sample生成・読み取りを確認し、Git管理外の個人用データを含まないsourceコピーでもunit testを確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
 
 ## 実環境の確認範囲
 
@@ -69,7 +70,7 @@ Python unit test、Web production build、wheel / sdist buildを実行した。�
 ## 次に決めること
 
 1. 複数ファイルの同時読み取りと強制終了を扱う世代切替方式。
-2. SQL生成・変換まで含むWarehouse境界、およびWebの読み取り契約とProfileStorageの関係。
-3. config versioning、公開例外と戻り値の安定化、依存パッケージの分離。
+2. Webの読み取り契約とProfileStorageの関係。
+3. config versioning、ProfilePlan / ProfileResultの安定化、依存パッケージの分離。
 4. categoricalのquery生成と、高cardinality時の取得・保存制限。
 5. CI、ブラウザテスト、長時間queryの進捗・timeout・job ID。

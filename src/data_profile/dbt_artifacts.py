@@ -3,10 +3,11 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
+from data_profile.exceptions import DataProfileError
 from data_profile.models import ColumnMetadata, ModelProfile
 
 
-class ArtifactError(Exception):
+class ArtifactError(DataProfileError):
     pass
 
 

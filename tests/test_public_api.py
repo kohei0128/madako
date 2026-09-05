@@ -152,6 +152,8 @@ def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_row
 
 
 def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
+    from data_profile import StorageOperationError
+
     write_profile_storage([configured_model()], tmp_path)
     app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
 
@@ -159,8 +161,9 @@ def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
         raise OSError("disk full")
 
     monkeypatch.setattr("data_profile.storage.ParquetProfileStorage.save", fail_save)
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(StorageOperationError, match="could not save profile storage") as error:
         app.profile()
+    assert isinstance(error.value.__cause__, OSError)
 
 
 @pytest.mark.parametrize("failure", [False, True])

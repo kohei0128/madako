@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from data_profile.bigquery_profile import ProfilingError
-from data_profile.warehouse import BigQueryAdapter, WarehouseAdapter
+from data_profile.exceptions import DataProfileError, PlanningError, StorageOperationError
+from data_profile.warehouse import WarehouseAdapter, complete_adapter
 from data_profile.models import ModelProfile
 from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
 from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
@@ -57,7 +57,8 @@ class DataProfile:
     ) -> None:
         self.storage_dir = Path(storage_dir)
         self._storage = storage if storage is not None else ParquetProfileStorage(self.storage_dir)
-        warehouse = adapter if adapter is not None else BigQueryAdapter()
+        warehouse = complete_adapter(adapter)
+        self._adapter = warehouse
         self._estimator = estimator if estimator is not None else warehouse.estimate
         self._runner = runner if runner is not None else warehouse.execute
 
@@ -85,11 +86,29 @@ class DataProfile:
         storage: ProfileStorage | None = None,
     ) -> "DataProfile":
         instance = cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter, storage=storage)
-        import_dbt_profiles(Path(project_dir), instance._storage)
+        try:
+            import_dbt_profiles(Path(project_dir), instance._storage)
+        except DataProfileError:
+            raise
+        except Exception as error:
+            raise StorageOperationError("could not import dbt metadata into profile storage") from error
         return instance
 
     def models(self) -> list[ModelProfile]:
-        return self._storage.load()
+        try:
+            return self._storage.load()
+        except DataProfileError:
+            raise
+        except Exception as error:
+            raise StorageOperationError("could not load profile storage") from error
+
+    def _save(self, models: list[ModelProfile]) -> tuple[Path, Path]:
+        try:
+            return self._storage.save(models)
+        except DataProfileError:
+            raise
+        except Exception as error:
+            raise StorageOperationError("could not save profile storage") from error
 
     def plan(
         self,
@@ -103,18 +122,24 @@ class DataProfile:
             selector=select,
             project=project,
             location=location,
+            adapter=self._adapter,
             estimator=self._estimator,
         )
         return ProfilePlan(tuple(items))
 
     def run(self, plan: ProfilePlan) -> ProfileResult:
         if not plan.items:
-            raise ProfilingError("cannot run an empty profile plan")
+            raise PlanningError("cannot run an empty profile plan")
         models = self.models()
-        execution = execute_profile_plan(models, list(plan.items), runner=self._runner)
+        execution = execute_profile_plan(
+            models,
+            list(plan.items),
+            adapter=self._adapter,
+            runner=self._runner,
+        )
         models_path, profiles_path = self._storage.paths
         if execution.complete:
-            models_path, profiles_path = self._storage.save(execution.models)
+            models_path, profiles_path = self._save(execution.models)
         profiled_models = (
             tuple(dict.fromkeys(item.model.name for item in plan.items))
             if execution.complete else ()

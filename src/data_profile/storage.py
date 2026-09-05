@@ -9,6 +9,7 @@ from typing import Protocol
 import duckdb
 
 from data_profile.dbt_artifacts import read_dbt_artifacts
+from data_profile.exceptions import StorageFormatError, StorageOperationError
 from data_profile.models import ColumnMetadata, ModelProfile
 from data_profile.repository import DuckDBProfileRepository, JsonProfileRepository
 
@@ -17,7 +18,7 @@ MODELS_FILENAME = "models.parquet"
 PROFILES_FILENAME = "column_profiles.parquet"
 
 
-class StorageRecoveryError(OSError):
+class StorageRecoveryError(StorageOperationError):
     """Replacement and rollback failed; recovery files must remain available."""
 
     def __init__(self, recovery_dir: Path):
@@ -49,7 +50,7 @@ class ParquetProfileStorage:
     def exists(self) -> bool:
         present = [path.exists() for path in self.paths]
         if any(present) and not all(present):
-            raise ValueError("incomplete profile storage: both Parquet files are required")
+            raise StorageFormatError("incomplete profile storage: both Parquet files are required")
         return all(present)
 
     def load(self) -> list[ModelProfile]:
@@ -110,7 +111,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
     profile_rows: list[tuple] = []
     ids = [model.unique_id for model in models]
     if len(ids) != len(set(ids)):
-        raise ValueError("duplicate relation unique_id")
+        raise StorageFormatError("duplicate relation unique_id")
     for model in models:
         columns = model.columns or _columns_from_profiles(model)
         model_rows.append((
