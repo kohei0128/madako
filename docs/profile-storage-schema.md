@@ -1,6 +1,6 @@
 # Profile Storage Schema
 
-最終更新: 2026-09-05
+最終更新: 2026-09-06
 
 現在のschema versionは**1**。両ファイルに`schema_version`列を持つ。
 
@@ -34,8 +34,9 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | columns_json | VARCHAR | No | profile未生成時にも表示するcolumn metadata |
 | profiling_json | VARCHAR | No | dbtで解決済みの`meta.profiling`設定 |
 | profiled_at | VARCHAR | Yes | profile実行日時のISO 8601文字列 |
+| profile_version | INTEGER | Yes | profile計算ロジックのversion。現在は2 |
 
-`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。
+`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。`profile_version`がない既存v1 storageはversion 1として読み取る。
 
 ## column_profiles.parquet
 
@@ -99,10 +100,9 @@ Parquet columnは単一の物理型を必要とするが、Min / MaxはNumeric�
 
 - INT64: `int`
 - FLOAT64: `float`
+- NUMERIC / BIGNUMERIC: 精度を保持する10進文字列
 - DATE: ISO date string
 - その他: string
-
-将来BigQuery固有型を増やす際に、typed columnsへ分割するかJSON表現へ変更するかを再検討する。
 
 ## 書き換え方針
 

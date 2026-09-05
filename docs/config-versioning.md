@@ -1,15 +1,16 @@
 # Config and Storage Versioning Guide
 
-最終更新: 2026-09-05
+最終更新: 2026-09-06
 
 このドキュメントは、ProfilingConfigとParquet storageのバージョニング方針を定義します。
 
 ## 概要
 
-Data Profileには2層のバージョニングがあります:
+Data Profileには3層のバージョニングがあります:
 
 1. **Parquet Schema Version**: ファイル形式のバージョン（カラム構造、型）
 2. **Profiling Signature**: 計算ロジックに影響する設定の変更検知
+3. **Profile Computation Version**: 対応型やmetric計算実装の変更検知
 
 ## 1. Parquet Schema Version
 
@@ -19,6 +20,7 @@ Data Profileには2層のバージョニングがあります:
   - `schema_version` カラムを含む
   - `unique_id` による明確なモデル識別
   - `profiling_json` によるconfig保存
+  - optionalな`profile_version`による計算version保存
   - `empty_string_count`, `missing_count`, `missing_rate` による詳細な欠損値追跡
 
 ### バージョニングルール
@@ -97,6 +99,8 @@ class ProfilingConfig(BaseModel):
 
 `ModelProfile.profiling_signature()` は、変更時に再プロファイリングが必要な入力フィールドのハッシュを提供します。
 
+signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計算SQLなど、artifactやProfilingConfigに現れない計算変更でも古いplanを識別できるようにする。
+
 ### 含まれるフィールド
 
 ```python
@@ -136,7 +140,15 @@ class ProfilingConfig(BaseModel):
 | description のみ変更 | 変わらない | 保持 |
 | tag 追加 | 変わらない | 保持 |
 
-## 4. 実装リファレンス
+## 4. Profile Computation Version
+
+現在のversionは**2**。version 2でNUMERIC / BIGNUMERICのMin / Max profilingを追加した。
+
+profile保存時に`models.parquet.profile_version`へ記録する。dbt artifactの再import時は、保存済みversionが現在の`PROFILE_COMPUTATION_VERSION`と一致する場合だけ既存profileを引き継ぐ。`profile_version`列がない既存v1 storageはversion 1として読み取るため、今回の変更後は再profileされる。
+
+Parquetの物理形式はMin / Maxを既にVARCHARで保持しているため、NUMERIC / BIGNUMERIC追加によるschema version変更は不要。
+
+## 5. 実装リファレンス
 
 ### 関連ファイル
 
@@ -149,9 +161,11 @@ class ProfilingConfig(BaseModel):
 
 - `tests/test_storage.py::test_unknown_schema_version_is_rejected`
 - `tests/test_storage.py::test_legacy_storage_migrates_only_when_names_are_unambiguous`
+- `tests/test_storage.py::test_storage_without_profile_version_loads_as_version_one`
 - `tests/test_public_api.py::test_reimport_preserves_only_compatible_profiles`
+- `tests/test_public_api.py::test_reimport_invalidates_profiles_from_old_computation_version`
 
-## 5. よくある質問
+## 6. よくある質問
 
 ### Q: 新しいProfilingConfigフィールドを追加したい
 
@@ -178,16 +192,17 @@ A: 以下の手順を踏んでください:
 4. マイグレーションガイドを作成
 5. ユーザーに通知（breaking change）
 
-## 6. 今後の拡張
+## 7. 今後の拡張
 
 ### 候補機能とバージョニング影響
 
-| 機能 | ProfilingConfig変更 | Signature影響 | Parquet影響 |
+| 機能 | ProfilingConfig変更 | Signature / computation version影響 | Parquet影響 |
 |-----|-------------------|--------------|------------|
 | trim_whitespace | 新フィールド追加 | Yes（計算ロジック） | No |
 | カテゴリカルpagination | 新フィールド追加 | No（表示制御） | No |
 | 高cardinality制限 | 新フィールド追加 | Yes（結果に影響） | No |
-| 新しいmetric追加 | なし | No | Yes（新カラム） |
+| 対応型追加 | なし | computation versionを更新 | 通常No |
+| 新しいmetric追加 | なし | computation versionを更新 | Yes（新カラム） |
 
 ### バージョニング方針（0.x系 vs 1.0以降）
 

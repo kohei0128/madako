@@ -81,11 +81,12 @@ class DuckDBProfileRepository:
             if current and "unique_id" not in profile_columns:
                 raise StorageFormatError("profile storage is missing unique_id")
             profiling = "profiling_json" if "profiling_json" in model_columns else "'{}'"
+            profile_version = "profile_version" if "profile_version" in model_columns else "1"
             rows = connection.execute(
                 f"""
                 SELECT unique_id, resource_type, model_name, database_name, schema_name,
                        relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, {profiling}, profiled_at
+                       columns_json, {profiling}, profiled_at, {profile_version}
                 FROM read_parquet(?) ORDER BY model_name, unique_id
                 """, [str(self.models_path)],
             ).fetchall()
@@ -181,6 +182,7 @@ class DuckDBProfileRepository:
             columns=[ColumnMetadata.model_validate(column) for column in json.loads(row[10])],
             profiling=json.loads(row[11]),
             profiled_at=row[12],
+            profile_version=row[13],
             profiles=slices,
         )
 

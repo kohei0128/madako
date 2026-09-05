@@ -66,6 +66,8 @@ config:
 
 OverallとDATE dimensionを生成できます。categorical dimensionは保存済みデータの表示のみ対応しています。DATEのNULL bucketは日付比較から分離して表示します。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
 
+対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。NUMERIC / BIGNUMERICのMin / Maxは精度を失わない10進文字列としてAPIとParquetへ保存します。
+
 ## Python API
 
 ```python

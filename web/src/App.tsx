@@ -13,9 +13,31 @@ const typeFilters: { value: TypeFilter; label: string }[] = [
 function matchesType(column: ColumnProfile, filter: TypeFilter): boolean {
   if (filter === "all") return true;
   if (filter === "string") return column.data_type === "STRING";
-  if (filter === "numeric") return column.data_type === "INT64" || column.data_type === "FLOAT64";
+  if (filter === "numeric") return ["INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC"].includes(column.data_type);
   if (filter === "boolean") return column.data_type === "BOOL";
   return column.data_type === "DATE";
+}
+
+function compareDecimalStrings(left: string, right: string): number {
+  const parse = (value: string) => {
+    const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(value);
+    if (!match) return null;
+    const integer = match[2].replace(/^0+(?=\d)/, "");
+    const fraction = (match[3] ?? "").replace(/0+$/, "");
+    const zero = integer === "0" && fraction === "";
+    return { sign: match[1] === "-" && !zero ? -1 : 1, integer, fraction };
+  };
+  const a = parse(left);
+  const b = parse(right);
+  if (!a || !b) return left.localeCompare(right);
+  if (a.sign !== b.sign) return a.sign - b.sign;
+  let magnitude = a.integer.length - b.integer.length;
+  if (magnitude === 0) magnitude = a.integer.localeCompare(b.integer);
+  if (magnitude === 0) {
+    const scale = Math.max(a.fraction.length, b.fraction.length);
+    magnitude = a.fraction.padEnd(scale, "0").localeCompare(b.fraction.padEnd(scale, "0"));
+  }
+  return a.sign * magnitude;
 }
 
 function missingMetric(column: ColumnProfile, includeEmpty: boolean) {
@@ -140,8 +162,15 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
   }
   const minimums = points.flatMap(({ column }) => column.min_value === null ? [] : [column.min_value]);
   const maximums = points.flatMap(({ column }) => column.max_value === null ? [] : [column.max_value]);
-  const min = minimums.length === 0 ? null : first.data_type === "DATE" ? minimums.map(String).sort()[0] : Math.min(...minimums.map(Number));
-  const max = maximums.length === 0 ? null : first.data_type === "DATE" ? maximums.map(String).sort().at(-1) : Math.max(...maximums.map(Number));
+  const exactDecimal = first.data_type === "NUMERIC" || first.data_type === "BIGNUMERIC";
+  const min = minimums.length === 0 ? null
+    : first.data_type === "DATE" ? minimums.map(String).sort()[0]
+    : exactDecimal ? minimums.map(String).sort(compareDecimalStrings)[0]
+    : Math.min(...minimums.map(Number));
+  const max = maximums.length === 0 ? null
+    : first.data_type === "DATE" ? maximums.map(String).sort().at(-1)
+    : exactDecimal ? maximums.map(String).sort(compareDecimalStrings).at(-1)
+    : Math.max(...maximums.map(Number));
   return <PairMetric leftLabel="Min" leftValue={String(min ?? "—")} rightLabel="Max" rightValue={String(max ?? "—")} />;
 }
 

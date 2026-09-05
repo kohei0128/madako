@@ -9,7 +9,7 @@ from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, Pro
 MAX_RESULT_ROWS = 100_000
 
 
-SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "BOOL", "DATE"}
+SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL", "DATE"}
 
 
 def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> str:
@@ -196,11 +196,13 @@ def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_
         )
         expressions.append(
             f"CAST(MIN({quoted}) AS STRING) AS m{index}_min_value"
-            if column.data_type in {"INT64", "FLOAT64", "DATE"} else f"CAST(NULL AS STRING) AS m{index}_min_value"
+            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "DATE"}
+            else f"CAST(NULL AS STRING) AS m{index}_min_value"
         )
         expressions.append(
             f"CAST(MAX({quoted}) AS STRING) AS m{index}_max_value"
-            if column.data_type in {"INT64", "FLOAT64", "DATE"} else f"CAST(NULL AS STRING) AS m{index}_max_value"
+            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "DATE"}
+            else f"CAST(NULL AS STRING) AS m{index}_max_value"
         )
         expressions.append(
             f"COUNTIF({quoted} IS TRUE) AS m{index}_true_count"

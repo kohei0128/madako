@@ -87,11 +87,17 @@ def create_tables(*, project: str, dataset: str, location: str) -> None:
 CREATE TABLE {relation}.boundary_table{quote} AS
 SELECT * FROM UNNEST([
   STRUCT(DATE '2026-09-01' AS event_date, DATE '2026-09-01' AS processed_date,
-         'alpha' AS category, 1 AS amount, 1.5 AS ratio, TRUE AS active),
-  STRUCT(CAST(NULL AS DATE), DATE '2026-09-02', '', 2, 2.5, FALSE),
+         'alpha' AS category, 1 AS amount, 1.5 AS ratio, TRUE AS active,
+         CAST('12345678901234567890.123456789' AS NUMERIC) AS precise_amount,
+         CAST('123456789012345678901234567890.12345678901234567890123456789012345678' AS BIGNUMERIC) AS large_amount),
+  STRUCT(CAST(NULL AS DATE), DATE '2026-09-02', '', 2, 2.5, FALSE,
+         CAST('-12345678901234567890.123456789' AS NUMERIC),
+         CAST('-123456789012345678901234567890.12345678901234567890123456789012345678' AS BIGNUMERIC)),
   STRUCT(DATE '2026-09-02', CAST(NULL AS DATE), CAST(NULL AS STRING),
-         CAST(NULL AS INT64), CAST(NULL AS FLOAT64), CAST(NULL AS BOOL)),
-  STRUCT(CAST(NULL AS DATE), CAST(NULL AS DATE), 'omega', 4, 4.5, TRUE)
+         CAST(NULL AS INT64), CAST(NULL AS FLOAT64), CAST(NULL AS BOOL),
+         CAST(NULL AS NUMERIC), CAST(NULL AS BIGNUMERIC)),
+  STRUCT(CAST(NULL AS DATE), CAST(NULL AS DATE), 'omega', 4, 4.5, TRUE,
+         CAST('0.000000001' AS NUMERIC), CAST('0.00000000000000000000000000000000000001' AS BIGNUMERIC))
 ]);
 
 CREATE TABLE {relation}.empty_table{quote} (
@@ -100,7 +106,9 @@ CREATE TABLE {relation}.empty_table{quote} (
   category STRING,
   amount INT64,
   ratio FLOAT64,
-  active BOOL
+  active BOOL,
+  precise_amount NUMERIC,
+  large_amount BIGNUMERIC
 );
 
 CREATE TABLE {relation}.fail_first{quote} AS SELECT 1 AS id;
@@ -126,6 +134,8 @@ def verify_boundaries(*, project: str, dataset: str, location: str, root: Path) 
         column("amount", "INT64"),
         column("ratio", "FLOAT64"),
         column("active", "BOOL"),
+        column("precise_amount", "NUMERIC"),
+        column("large_amount", "BIGNUMERIC"),
     ]
     models = [
         model(
@@ -161,6 +171,13 @@ def verify_boundaries(*, project: str, dataset: str, location: str, root: Path) 
             profile for profile in buckets if profile.dimension_value is None
         )
         assert null_bucket.record_count == 2
+
+    numeric = next(item for item in overall[0].columns if item.name == "precise_amount")
+    bignumeric = next(item for item in overall[0].columns if item.name == "large_amount")
+    assert numeric.min_value == "-12345678901234567890.123456789"
+    assert numeric.max_value == "12345678901234567890.123456789"
+    assert bignumeric.min_value == "-123456789012345678901234567890.12345678901234567890123456789012345678"
+    assert bignumeric.max_value == "123456789012345678901234567890.12345678901234567890123456789012345678"
 
     empty = loaded["empty_table"]
     assert len(empty.profiles) == 1

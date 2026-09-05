@@ -10,7 +10,7 @@ import duckdb
 
 from data_profile.dbt_artifacts import read_dbt_artifacts
 from data_profile.exceptions import StorageFormatError, StorageOperationError
-from data_profile.models import ColumnMetadata, ModelProfile
+from data_profile.models import PROFILE_COMPUTATION_VERSION, ColumnMetadata, ModelProfile
 from data_profile.repository import DuckDBProfileRepository, JsonProfileRepository
 
 
@@ -226,8 +226,13 @@ def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Pat
     if storage.exists():
         existing = {model.unique_id: model for model in storage.load()}
         models = [
-            model.model_copy(update={"profiles": previous.profiles, "profiled_at": previous.profiled_at})
+            model.model_copy(update={
+                "profiles": previous.profiles,
+                "profiled_at": previous.profiled_at,
+                "profile_version": previous.profile_version,
+            })
             if (previous := existing.get(model.unique_id)) and previous.profiles
+            and previous.profile_version == PROFILE_COMPUTATION_VERSION
             and previous.profiling_signature() == model.profiling_signature()
             else model
             for model in models
@@ -292,6 +297,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
             json.dumps([column.model_dump() for column in columns]),
             model.profiling.model_dump_json(),
             model.profiled_at.isoformat() if model.profiled_at else None,
+            model.profile_version,
         ))
         for profile_order, profile in enumerate(model.profiles):
             for column_order, column in enumerate(profile.columns):
@@ -333,11 +339,12 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                 tests_json VARCHAR NOT NULL,
                 columns_json VARCHAR NOT NULL,
                 profiling_json VARCHAR NOT NULL,
-                profiled_at VARCHAR
+                profiled_at VARCHAR,
+                profile_version INTEGER
             )
         """)
         if model_rows:
-            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
+            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
         connection.execute("""
             CREATE TABLE column_profiles (
                 schema_version INTEGER NOT NULL,

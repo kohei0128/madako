@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field
 
 from data_profile.exceptions import DataProfileError, PlanningError, ResultValidationError, WarehouseError
-from data_profile.models import ModelProfile
+from data_profile.models import PROFILE_COMPUTATION_VERSION, ModelProfile
 from data_profile.warehouse import WarehouseAdapter, complete_adapter
 
 
@@ -179,7 +179,11 @@ def execute_profile_plan(
 
     profiled_at = datetime.now(UTC)
     updated_models = [
-        model.model_copy(update={"profiles": profiles_by_model[model.unique_id], "profiled_at": profiled_at})
+        model.model_copy(update={
+            "profiles": profiles_by_model[model.unique_id],
+            "profiled_at": profiled_at,
+            "profile_version": PROFILE_COMPUTATION_VERSION,
+        })
         if model.unique_id in profiles_by_model
         else model
         for model in models

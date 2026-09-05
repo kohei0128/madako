@@ -1,4 +1,4 @@
-export type ColumnType = "STRING" | "INT64" | "FLOAT64" | "BOOL" | "DATE";
+export type ColumnType = "STRING" | "INT64" | "FLOAT64" | "NUMERIC" | "BIGNUMERIC" | "BOOL" | "DATE";
 
 export interface ColumnProfile {
   name: string;

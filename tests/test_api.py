@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from data_profile.cli import main as cli_main
+from data_profile.models import ColumnMetadata, ColumnProfile, ProfileSlice
 from data_profile.server import create_app
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
 from data_profile.sample import sample_models
@@ -121,3 +122,28 @@ def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.Monk
     models = list_models(include_profiles=False)
     assert models[0].name == "events"
     assert models[0].profiles == []
+
+
+def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
+    numeric = sample_models()[0].model_copy(update={
+        "columns": [ColumnMetadata(name="amount", data_type="BIGNUMERIC")],
+        "profiles": [ProfileSlice(
+            record_count=1,
+            columns=[ColumnProfile(
+                name="amount",
+                data_type="BIGNUMERIC",
+                null_count=0,
+                null_rate=0,
+                min_value="-123456789012345678901234567890.12345678901234567890123456789012345678",
+                max_value="123456789012345678901234567890.12345678901234567890123456789012345678",
+            )],
+        )],
+    })
+    write_profile_storage([numeric], tmp_path)
+
+    response = request(create_app(ParquetProfileStorage(tmp_path)), "/api/models/events/profile")
+
+    assert response.status_code == 200
+    metric = response.json()["profiles"][0]["columns"][0]
+    assert metric["min_value"] == numeric.profiles[0].columns[0].min_value
+    assert metric["max_value"] == numeric.profiles[0].columns[0].max_value

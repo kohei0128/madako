@@ -98,6 +98,51 @@ def test_empty_storage_round_trip(tmp_path: Path) -> None:
     assert storage.load() == []
 
 
+def test_numeric_values_and_profile_version_round_trip(tmp_path: Path) -> None:
+    from data_profile.models import ColumnProfile, ProfileSlice
+
+    numeric = model("numeric").model_copy(update={
+        "columns": [ColumnMetadata(name="amount", data_type="BIGNUMERIC")],
+        "profile_version": 2,
+        "profiles": [ProfileSlice(
+            record_count=1,
+            columns=[ColumnProfile(
+                name="amount",
+                data_type="BIGNUMERIC",
+                null_count=0,
+                null_rate=0,
+                min_value="-123456789012345678901234567890.12345678901234567890123456789012345678",
+                max_value="123456789012345678901234567890.12345678901234567890123456789012345678",
+            )],
+        )],
+    })
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([numeric])
+    loaded = storage.load()[0]
+
+    assert loaded.profile_version == 2
+    assert loaded.profiles[0].columns[0].min_value == numeric.profiles[0].columns[0].min_value
+    assert loaded.profiles[0].columns[0].max_value == numeric.profiles[0].columns[0].max_value
+
+
+def test_storage_without_profile_version_loads_as_version_one(tmp_path: Path) -> None:
+    import duckdb
+    from data_profile.sample import sample_models
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save(sample_models())
+    models_path, _ = storage.paths
+    with duckdb.connect() as connection:
+        connection.execute(
+            "CREATE TABLE old_models AS SELECT * EXCLUDE(profile_version) FROM read_parquet(?)",
+            [str(models_path)],
+        )
+        connection.execute("COPY old_models TO ? (FORMAT PARQUET)", [str(models_path)])
+
+    assert storage.load()[0].profile_version == 1
+
+
 def test_legacy_storage_migrates_only_when_names_are_unambiguous(tmp_path: Path) -> None:
     import duckdb
     from data_profile.sample import sample_models

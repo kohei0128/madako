@@ -128,3 +128,40 @@ def test_type_aliases_generate_metrics() -> None:
     assert "MIN(`integer`)" in sql
     assert "MAX(`float`)" in sql
     assert "COUNTIF(`boolean` IS TRUE)" in sql
+
+
+def test_numeric_types_generate_metrics_and_preserve_decimal_strings() -> None:
+    numeric_model = model().model_copy(update={"columns": [
+        ColumnMetadata(name="amount", data_type="NUMERIC"),
+        ColumnMetadata(name="large_amount", data_type="BIGNUMERIC"),
+    ]})
+
+    sql = generate_profile_sql(numeric_model)
+
+    assert "CAST(MIN(`amount`) AS STRING)" in sql
+    assert "CAST(MAX(`large_amount`) AS STRING)" in sql
+
+    rows = [
+        {
+            "dimension_name": None,
+            "dimension_value": None,
+            "record_count": "1",
+            "column_order": str(order),
+            "column_name": name,
+            "column_type": data_type,
+            "null_count": "0",
+            "null_rate": "0",
+            "distinct_count": None,
+            "min_value": value,
+            "max_value": value,
+            "true_count": None,
+        }
+        for order, (name, data_type, value) in enumerate([
+            ("amount", "NUMERIC", "12345678901234567890.123456789"),
+            ("large_amount", "BIGNUMERIC", "-123456789012345678901234567890.12345678901234567890123456789012345678"),
+        ])
+    ]
+
+    columns = rows_to_profiles(numeric_model, rows, validate=True)[0].columns
+    assert columns[0].min_value == "12345678901234567890.123456789"
+    assert columns[1].min_value == "-123456789012345678901234567890.12345678901234567890123456789012345678"

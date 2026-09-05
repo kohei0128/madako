@@ -5,11 +5,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 MetricValue = str | int | float | bool | date | None
+PROFILE_COMPUTATION_VERSION = 2
 
 
 class ColumnProfile(BaseModel):
     name: str
-    data_type: Literal["STRING", "INT64", "FLOAT64", "BOOL", "DATE"]
+    data_type: Literal["STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL", "DATE"]
     description: str = ""
     null_count: Annotated[int, Field(ge=0)]
     null_rate: Annotated[float, Field(ge=0, le=1)]
@@ -87,6 +88,7 @@ class ModelProfile(BaseModel):
     columns: list[ColumnMetadata] = Field(default_factory=list)
     profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
     profiled_at: datetime | None = None
+    profile_version: int | None = Field(default=None, exclude=True)
     profiles: list[ProfileSlice] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -107,7 +109,8 @@ class ModelProfile(BaseModel):
 
         See config-versioning.md for details on what triggers invalidation.
         """
-        return self.model_dump_json(include={
+        payload = self.model_dump_json(include={
             "unique_id", "resource_type", "name", "database", "schema_name",
             "relation_name", "materialization", "columns", "profiling",
         })
+        return f'{PROFILE_COMPUTATION_VERSION}:{payload}'

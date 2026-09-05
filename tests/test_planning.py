@@ -45,6 +45,20 @@ def test_plan_resolves_config_and_estimates_cost() -> None:
     assert calls[0][1:] == ("project", "asia-northeast1")
 
 
+def test_plan_supports_numeric_and_bignumeric_columns() -> None:
+    model = configured_model().model_copy(update={"columns": [
+        ColumnMetadata(name="amount", data_type="NUMERIC"),
+        ColumnMetadata(name="large_amount", data_type="BIGNUMERIC"),
+        ColumnMetadata(name="payload", data_type="JSON"),
+    ], "profiling": ProfilingConfig(enabled=True)})
+
+    plan = create_profile_plan([model], estimator=lambda *_: 1)
+
+    assert plan[0].skipped_columns == ("payload",)
+    assert "MIN(`amount`)" in plan[0].sql
+    assert "MAX(`large_amount`)" in plan[0].sql
+
+
 def test_plan_marks_estimate_over_limit_as_blocked() -> None:
     plan = create_profile_plan([configured_model()], estimator=lambda *_: 10_001)
 

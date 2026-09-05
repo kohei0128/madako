@@ -276,6 +276,24 @@ def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch
     assert (persisted.profiled_at is not None) is not changed
 
 
+def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Path, monkeypatch) -> None:
+    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+    current = configured_model()
+    write_profile_storage([current], tmp_path)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    assert app.profile().successful
+    profiled = app.models()[0].model_copy(update={"profile_version": 1})
+    write_profile_storage([profiled], tmp_path)
+    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [current])
+
+    import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
+
+    persisted = app.models()[0]
+    assert persisted.profiles == []
+    assert persisted.profiled_at is None
+    assert persisted.profile_version is None
+
+
 def test_empty_table_has_overall_without_date_buckets(tmp_path: Path) -> None:
     write_profile_storage([configured_model()], tmp_path)
     rows = profile_rows()[:2]
