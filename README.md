@@ -120,7 +120,16 @@ cd web
 npm run build
 ```
 
-unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。実環境の複数relation E2E、ブラウザ自動テスト、CIは[Roadmap](docs/roadmap.md)で管理します。
+unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。ブラウザ自動テストとCIは[Roadmap](docs/roadmap.md)で管理します。
+
+Phase 2のBigQuery E2Eを再実行する場合は、一意な検証用dataset名を指定します。スクリプトはdatasetと検証tableを作成し、完了時にdatasetを削除します。tableには24時間の既定有効期限も設定します。
+
+```bash
+uv run python examples/verify_phase2_bigquery.py \
+  --project <billing-project> \
+  --dataset data_profile_phase2_<unique-name> \
+  --location asia-northeast1
+```
 
 ## HTTP API
 

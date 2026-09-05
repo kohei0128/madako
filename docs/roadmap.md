@@ -9,7 +9,7 @@
 ```text
 [完了] Profiling vertical slice
     ↓
-[進行中] 安全な複数relation実行と実環境検証
+[完了] 安全な複数relation実行と実環境検証
     ↓
 [完了] ライブラリ境界・保存契約の安定化
     ↓
@@ -28,7 +28,7 @@ wheelを生成でき、`DataProfile`を公開入口として利用できる。�
 
 categorical dimensionは保存・表示まで。実query生成はMVPの残課題として管理する。
 
-## Phase 2: 安全な複数relation実行 — 進行中
+## Phase 2: 安全な複数relation実行 — 完了
 
 実装・ローカルテスト済み:
 
@@ -41,12 +41,15 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 - stage生成・読み戻し検証・置換失敗時の復元、復元失敗時のbackup保持
 - 個人用artifactに依存しない回帰テスト
 
-完了条件として残るもの:
+実BigQueryで検証済み:
 
-- 複数の実BigQuery relationで失敗・skip・保存しない結果を確認する
-- NULL partition、空table、複数dimension、結果取得上限を実環境で確認する
+- tsuboの3 relationを同時にprofileし、全項目の成功とParquet保存を確認
+- 一時datasetでNULL partition、空table、複数dimensionを確認
+- 上限超過時の全skipとstorage非更新を確認
+- plan後にrelationを削除し、Succeeded / Failed / Skippedとstorage非更新を確認
+- 100,000 metric rows到達時の失敗とstorage非更新を確認
 
-2026-09-06にtsuboの3 relationを実BigQueryで同時にprofileし、全項目の成功とParquet保存を確認した。保存後はPython APIとHTTP APIから`unique_id`ごとに読み戻した。実環境データを使った失敗・skipと、境界条件の確認は引き続き残る。
+検証用datasetは同一BigQuery project内に作成し、検証完了後に削除した。再実行には`examples/verify_phase2_bigquery.py`を使用する。
 
 ## Phase 3: ライブラリ境界と契約の安定化 — 完了
 

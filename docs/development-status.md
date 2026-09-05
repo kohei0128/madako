@@ -22,11 +22,11 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 | 設定 | enabled、dimensions、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE dimension、型別metrics、NULL bucket | categoricalは保存・表示のみ。SQL生成はDATE dimensionだけ |
 | 型 | STRING / INT64 / FLOAT64 / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | NUMERIC、TIMESTAMP、複合型などは除外 |
-| 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存 | 実BigQueryの複数relation E2Eは未確認 |
+| 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
 | Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh | ブラウザの自動操作テストは未整備 |
-| テスト・サンプル | 合成データによるsampleとdbt artifactテスト | 実環境のE2EとCIは別途必要 |
+| テスト・サンプル | 合成データによるsampleとdbt artifactテスト、実BigQuery用Phase 2 E2Eスクリプト | E2EのCI組み込みは未対応 |
 
 ## 実行と保存の保証
 
@@ -67,7 +67,9 @@ Python unit test、Web production build、wheel / sdist buildを実行した。�
 
 2026-09-06に更新済みのdbt artifactを使い、`mart_pl_transactions`、`pl_money_forward`、`stg_zaim_transactions`の3 relationを実BigQueryで同時にprofileした。3項目とも成功し、全成功後のParquet保存、Python APIでの読み戻し、HTTP APIでのmetadata一覧と`unique_id`別profile取得を確認した。`NUMERIC` / `BIGNUMERIC`の`amount`はMVP非対応型として想定どおりskipされた。
 
-この確認でCLIの`serve`が移行前のrepositoryをserverへ渡してHTTP 500になる不整合を検出し、`ParquetProfileStorage`を渡すよう修正した。実BigQueryでの失敗・skip時の非保存、NULL partition、空table、複数dimension、結果取得上限は次の確認対象。
+この確認でCLIの`serve`が移行前のrepositoryをserverへ渡してHTTP 500になる不整合を検出し、`ParquetProfileStorage`を渡すよう修正した。
+
+続いて同一project内の一時datasetを使い、NULL partition、空table、2つのDATE dimensionを実query・保存した。上限超過による全skip、plan後のrelation削除によるSucceeded / Failed / Skipped、100,000 metric rows到達時の拒否では、いずれもParquetのhashが変わらず保存されないことを確認した。一時datasetは検証後に削除した。これによりPhase 2の実環境確認は完了した。
 
 ## 次に決めること
 
