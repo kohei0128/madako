@@ -6,16 +6,15 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
-from data_profile.storage import build_parquet_fixture, write_profile_storage
+from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
 from data_profile.sample import sample_models
 
 
 @pytest.fixture
-def repository(tmp_path: Path) -> DuckDBProfileRepository:
-    models_path, profiles_path = write_profile_storage(sample_models(), tmp_path)
-    return DuckDBProfileRepository(models_path, profiles_path)
+def storage(tmp_path: Path) -> ParquetProfileStorage:
+    write_profile_storage(sample_models(), tmp_path)
+    return ParquetProfileStorage(tmp_path)
 
 
 def request(app, path: str) -> httpx.Response:
@@ -27,8 +26,8 @@ def request(app, path: str) -> httpx.Response:
     return asyncio.run(send())
 
 
-def test_get_model_profile(repository: DuckDBProfileRepository) -> None:
-    response = request(create_app(repository), "/api/models/events/profile")
+def test_get_model_profile(storage: ParquetProfileStorage) -> None:
+    response = request(create_app(storage), "/api/models/events/profile")
 
     assert response.status_code == 200
     payload = response.json()
@@ -41,8 +40,8 @@ def test_get_model_profile(repository: DuckDBProfileRepository) -> None:
     assert payload["profiles"][0]["columns"][1]["min_value"] == 1.5
 
 
-def test_date_and_categorical_profiles_are_reconstructed(repository: DuckDBProfileRepository) -> None:
-    model = repository.get_model("events")
+def test_date_and_categorical_profiles_are_reconstructed(storage: ParquetProfileStorage) -> None:
+    model = storage.get_model("events")
 
     date_profiles = [profile for profile in model.profiles if profile.dimension_name == "event_date"]
     service_profiles = [profile for profile in model.profiles if profile.dimension_name == "service"]
@@ -51,8 +50,8 @@ def test_date_and_categorical_profiles_are_reconstructed(repository: DuckDBProfi
     assert {profile.dimension_value for profile in service_profiles} == {"consumer", "business"}
 
 
-def test_unknown_model_returns_404(repository: DuckDBProfileRepository) -> None:
-    response = request(create_app(repository), "/api/models/unknown/profile")
+def test_unknown_model_returns_404(storage: ParquetProfileStorage) -> None:
+    response = request(create_app(storage), "/api/models/unknown/profile")
 
     assert response.status_code == 404
 
@@ -83,8 +82,8 @@ def test_invalid_fixture_is_rejected(tmp_path: Path) -> None:
         build_parquet_fixture(fixture, tmp_path / "parquet")
 
 
-def test_metadata_list_omits_metrics(repository: DuckDBProfileRepository) -> None:
-    response = request(create_app(repository), "/api/models?include_profiles=false")
+def test_metadata_list_omits_metrics(storage: ParquetProfileStorage) -> None:
+    response = request(create_app(storage), "/api/models?include_profiles=false")
     assert response.status_code == 200
     assert response.json()[0]["profiles"] == []
     assert response.json()[0]["columns"]
@@ -94,8 +93,9 @@ def test_metadata_list_omits_metrics(repository: DuckDBProfileRepository) -> Non
 def test_same_name_api_uses_unique_id(tmp_path: Path) -> None:
     first = sample_models()[0]
     second = first.model_copy(update={"unique_id": "source.demo.events", "profiles": [], "profiled_at": None})
-    repository = DuckDBProfileRepository(*write_profile_storage([first, second], tmp_path))
-    app = create_app(repository)
+    write_profile_storage([first, second], tmp_path)
+    storage = ParquetProfileStorage(tmp_path)
+    app = create_app(storage)
     assert request(app, "/api/models/events/profile").status_code == 409
     assert request(app, "/api/models/model.demo.events/profile").json()["profiles"]
     assert request(app, "/api/models/source.demo.events/profile").json()["profiles"] == []

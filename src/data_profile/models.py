@@ -58,6 +58,15 @@ class ColumnMetadata(BaseModel):
 
 
 class ProfilingConfig(BaseModel):
+    """Configuration for profiling a dbt model or source.
+
+    Stored in dbt YAML under `meta.profiling`. Fields affecting computation
+    (like treat_empty_string_as_null) are included in profiling_signature()
+    and trigger profile invalidation when changed.
+
+    See config-versioning.md for versioning details.
+    """
+
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
     max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
@@ -87,7 +96,17 @@ class ModelProfile(BaseModel):
         return self
 
     def profiling_signature(self) -> str:
-        """Inputs whose changes invalidate a plan or previously calculated metrics."""
+        """Compute signature of inputs that invalidate plans or metrics.
+
+        Returns JSON string of fields that trigger re-profiling when changed:
+        unique_id, resource_type, name, database, schema_name, relation_name,
+        materialization, columns, and profiling config.
+
+        Used during import to detect incompatible changes. When signature
+        changes, existing profiles are cleared and must be recalculated.
+
+        See config-versioning.md for details on what triggers invalidation.
+        """
         return self.model_dump_json(include={
             "unique_id", "resource_type", "name", "database", "schema_name",
             "relation_name", "materialization", "columns", "profiling",

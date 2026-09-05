@@ -1,5 +1,6 @@
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel, Field
 
 from data_profile.exceptions import DataProfileError, PlanningError, StorageOperationError
 from data_profile.warehouse import WarehouseAdapter, complete_adapter
@@ -8,39 +9,66 @@ from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem,
 from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
 
 
-@dataclass(frozen=True)
-class ProfilePlan:
-    items: tuple[ProfilePlanItem, ...]
+class ProfilePlan(BaseModel):
+    """Profile execution plan containing estimation and SQL for each dimension.
+
+    A plan contains one or more items, each representing a profiling query
+    for a specific model/source and optional dimension. The plan can be
+    inspected before execution to verify cost estimates.
+    """
+
+    items: tuple[ProfilePlanItem, ...] = Field(
+        description="Plan items for each relation and dimension combination"
+    )
 
     @property
     def executable(self) -> bool:
+        """All items are within their configured max_bytes_billed limit."""
         return bool(self.items) and all(item.executable for item in self.items)
 
     @property
     def estimated_bytes(self) -> int:
+        """Total estimated bytes to be processed across all items."""
         return sum(item.estimated_bytes for item in self.items)
 
+    model_config = {"frozen": True}
 
-@dataclass(frozen=True)
-class ProfileResult:
-    plan: ProfilePlan
-    items: tuple[ProfileItemResult, ...]
-    profiled_models: tuple[str, ...]
-    models_path: Path
-    profiles_path: Path
-    storage_updated: bool
+
+class ProfileResult(BaseModel):
+    """Result of profile execution including success/failure status.
+
+    Contains the executed plan, per-item results, and paths to the saved
+    storage files. The storage_updated flag indicates whether all items
+    succeeded and results were persisted.
+    """
+
+    plan: ProfilePlan = Field(description="The plan that was executed")
+    items: tuple[ProfileItemResult, ...] = Field(description="Per-item execution results")
+    profiled_models: tuple[str, ...] = Field(
+        description="Names of models successfully profiled (empty if storage not updated)"
+    )
+    models_path: Path = Field(description="Path to models.parquet")
+    profiles_path: Path = Field(description="Path to column_profiles.parquet")
+    storage_updated: bool = Field(
+        description="True if all items succeeded and storage was saved"
+    )
 
     @property
     def successful(self) -> bool:
+        """All items succeeded and storage was updated."""
         return self.storage_updated and all(item.status == "succeeded" for item in self.items)
 
     @property
     def failed(self) -> tuple[ProfileItemResult, ...]:
+        """Items that failed during execution."""
         return tuple(item for item in self.items if item.status == "failed")
 
     @property
     def skipped(self) -> tuple[ProfileItemResult, ...]:
+        """Items that were skipped (due to size limit or earlier failure)."""
         return tuple(item for item in self.items if item.status == "skipped")
+
+    model_config = {"frozen": True}
 
 
 class DataProfile:
@@ -125,7 +153,7 @@ class DataProfile:
             adapter=self._adapter,
             estimator=self._estimator,
         )
-        return ProfilePlan(tuple(items))
+        return ProfilePlan(items=tuple(items))
 
     def run(self, plan: ProfilePlan) -> ProfileResult:
         if not plan.items:

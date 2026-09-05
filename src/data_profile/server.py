@@ -4,14 +4,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from data_profile.models import ModelProfile
-from data_profile.repository import AmbiguousProfileError, DuckDBProfileRepository, ProfileNotFoundError, ProfileRepository
-from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME
+from data_profile.repository import AmbiguousProfileError, ProfileNotFoundError
+from data_profile.storage import ParquetProfileStorage, ProfileStorage
 
 
 DEFAULT_STORAGE_DIR = Path(".data-profile")
 
 
-def create_app(repository: ProfileRepository | None = None) -> FastAPI:
+def create_app(storage: ProfileStorage | None = None) -> FastAPI:
     app = FastAPI(title="Data Profile API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
@@ -19,10 +19,7 @@ def create_app(repository: ProfileRepository | None = None) -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-    repository = repository or DuckDBProfileRepository(
-        DEFAULT_STORAGE_DIR / MODELS_FILENAME,
-        DEFAULT_STORAGE_DIR / PROFILES_FILENAME,
-    )
+    storage = storage or ParquetProfileStorage(DEFAULT_STORAGE_DIR)
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -30,9 +27,7 @@ def create_app(repository: ProfileRepository | None = None) -> FastAPI:
 
     @app.get("/api/models", response_model=list[ModelProfile], response_model_by_alias=True)
     def list_models(include_profiles: bool = True) -> list[ModelProfile]:
-        if not include_profiles and isinstance(repository, DuckDBProfileRepository):
-            return repository.list_metadata()
-        models = repository.list_models()
+        models = storage.load()
         return models if include_profiles else [model.model_copy(update={"profiles": []}) for model in models]
 
     @app.get(
@@ -42,7 +37,7 @@ def create_app(repository: ProfileRepository | None = None) -> FastAPI:
     )
     def get_profile(model_name: str) -> ModelProfile:
         try:
-            return repository.get_model(model_name)
+            return storage.get_model(model_name)
         except AmbiguousProfileError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except ProfileNotFoundError as error:

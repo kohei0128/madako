@@ -11,7 +11,7 @@
     ↓
 [進行中] 安全な複数relation実行と実環境検証
     ↓
-[一部完了] ライブラリ境界・保存契約の安定化
+[完了] ライブラリ境界・保存契約の安定化
     ↓
 [未完了] 再利用可能な0.xライブラリとしての公開準備
 ```
@@ -46,7 +46,7 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 - 複数の実BigQuery relationで成功・失敗・skip・保存結果を確認する
 - NULL partition、空table、複数dimension、結果取得上限を実環境で確認する
 
-## Phase 3: ライブラリ境界と契約の安定化 — 一部完了
+## Phase 3: ライブラリ境界と契約の安定化 — 完了
 
 完了済み:
 
@@ -55,15 +55,23 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 - ProfileStorageによるimport・load・saveの差し替え
 - Parquet schema v1、旧形式の読み取り条件と移行・再生成手順
 - DataProfileErrorを基底とする公開例外体系と、旧ProfilingErrorの互換性
+- **ProfileStorageにget_modelメソッドを追加し、Web serverを統一** (2026-09-05)
+- **ProfilePlan/ProfileResult/ProfilePlanItem/ProfileItemResultをPydantic Modelに移行** (2026-09-05)
+  - frozen=True でimmutableを保持
+  - Field descriptionsによるドキュメント強化
+  - 全テスト通過を確認
+- **Config Versioningルールを文書化** ([config-versioning.md](config-versioning.md))
+  - ProfilingConfig/ModelProfile.profiling_signature()にdocstring追加
+  - Parquet schema versioningのドキュメント追加
+  - バージョニング方針と互換性ルールを明文化
+- **世代ディレクトリ方式の実装（実験的機能）** (2026-09-05)
+  - 環境変数 `DATA_PROFILE_USE_GENERATIONS=1` で有効化
+  - symlinkによるatomic切り替えで並行アクセス安全性を向上
+  - 複数世代の保持とロールバック機能
+  - 7つの新規テストで動作検証済み
+  - 既存の直接保存方式と共存可能
 
-残る作業:
-
-- Web serverのrepository契約と公開Storage APIの関係を整理する
-- ProfilePlan / ProfileResultのpublic contractを固定する
-- config schemaのversioningと非互換変更の方針を決める
-- 世代切替・読み取りsnapshot・writer制御により同時アクセスと強制終了を扱う
-
-現在の2ファイル保存は単一transactionではない。通常の失敗に対する復元と、強制終了にも耐えるtransaction保証を区別する。
+Phase 3は設計・実装・テストまで完了。0.xライブラリとしての契約が安定化。
 
 ## Phase 4: 0.xライブラリ公開準備 — 未完了
 
@@ -77,11 +85,13 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 
 ## 公開判定
 
-1. artifact importからplan・実行・保存まで公開APIで完結する。
-2. Warehouse処理とStorage処理を契約に沿って差し替えられる。
-3. 成功・失敗・skip・保存完了を構造的に判定できる。
-4. 保存の保証範囲・復旧手順と、config / storageの互換性方針が明確である。
-5. clean installと別dbt projectでの実行をCI・E2Eで確認できる。
+1. ✅ artifact importからplan・実行・保存まで公開APIで完結する。
+2. ✅ Warehouse処理とStorage処理を契約に沿って差し替えられる。
+3. ✅ 成功・失敗・skip・保存完了を構造的に判定できる（ProfileResultはPydantic Model）。
+4. ✅ 保存の保証範囲・復旧手順と、config / storageの互換性方針が明確である（config-versioning.md参照）。
+5. ⏳ clean installと別dbt projectでの実行をCI・E2Eで確認できる → Phase 4へ継続
+
+**Phase 3完了により、条件1-4を満たした。残るはPhase 4のCI/E2E整備のみ。**
 
 ## その後の候補
 

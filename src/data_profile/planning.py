@@ -1,47 +1,73 @@
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
+
+from pydantic import BaseModel, Field
 
 from data_profile.exceptions import DataProfileError, PlanningError, ResultValidationError, WarehouseError
 from data_profile.models import ModelProfile
 from data_profile.warehouse import WarehouseAdapter, complete_adapter
 
 
-@dataclass(frozen=True)
-class ProfilePlanItem:
-    model: ModelProfile
-    dimension: str | None
-    sql: str
-    project: str
-    location: str
-    estimated_bytes: int
-    max_bytes_billed: int
-    skipped_columns: tuple[str, ...]
-    model_signature: str = ""
+class ProfilePlanItem(BaseModel):
+    """Plan item for a single relation and dimension profile query.
+
+    Contains the SQL query, cost estimation, and configuration for profiling
+    a specific model or source with an optional dimension breakdown.
+    """
+
+    model: ModelProfile = Field(description="Model or source to profile")
+    dimension: str | None = Field(default=None, description="Dimension column for breakdown, or None for overall")
+    sql: str = Field(description="Generated SQL query for profiling")
+    project: str = Field(description="BigQuery project ID to execute the query")
+    location: str = Field(description="BigQuery location/region for query execution")
+    estimated_bytes: Annotated[int, Field(ge=0)] = Field(description="Estimated bytes to be processed")
+    max_bytes_billed: Annotated[int, Field(gt=0)] = Field(description="Maximum allowed bytes to process")
+    skipped_columns: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Column names skipped due to unsupported data types"
+    )
+    model_signature: str = Field(default="", description="Hash of model config for staleness detection")
 
     @property
     def executable(self) -> bool:
+        """Query is within the configured max_bytes_billed limit."""
         return self.estimated_bytes <= self.max_bytes_billed
+
+    model_config = {"frozen": True}
 
 
 Estimator = Callable[[str, str, str], int]
 Runner = Callable[[str, str, str, int], list[dict]]
 
 
-@dataclass(frozen=True)
-class ProfileItemResult:
-    item: ProfilePlanItem
-    status: Literal["succeeded", "failed", "skipped"]
-    row_count: int = 0
-    error: str | None = None
+class ProfileItemResult(BaseModel):
+    """Execution result for a single profile plan item.
+
+    Indicates whether the query succeeded, failed, or was skipped,
+    along with row counts and error details if applicable.
+    """
+
+    item: ProfilePlanItem = Field(description="The plan item that was executed")
+    status: Literal["succeeded", "failed", "skipped"] = Field(description="Execution status")
+    row_count: Annotated[int, Field(ge=0)] = Field(default=0, description="Number of rows returned")
+    error: str | None = Field(default=None, description="Error message if status is 'failed'")
+
+    model_config = {"frozen": True}
 
 
-@dataclass(frozen=True)
-class ProfilePlanExecution:
-    models: list[ModelProfile]
-    results: tuple[ProfileItemResult, ...]
-    complete: bool
+class ProfilePlanExecution(BaseModel):
+    """Internal execution state tracking all item results.
+
+    Used internally during profile execution to accumulate results
+    and determine whether all items succeeded.
+    """
+
+    models: list[ModelProfile] = Field(description="Updated models with profile results")
+    results: tuple[ProfileItemResult, ...] = Field(description="Results for each plan item")
+    complete: bool = Field(description="True if all items succeeded")
+
+    model_config = {"frozen": True}
 
 
 def create_profile_plan(
