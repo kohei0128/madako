@@ -1,6 +1,6 @@
 # Data Profile Roadmap
 
-最終更新: 2026-09-05
+最終更新: 2026-09-06
 
 プロダクト要件は[product-requirements.md](product-requirements.md)、現在の実装は[development-status.md](development-status.md)を正とする。
 
@@ -43,8 +43,10 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 
 完了条件として残るもの:
 
-- 複数の実BigQuery relationで成功・失敗・skip・保存結果を確認する
+- 複数の実BigQuery relationで失敗・skip・保存しない結果を確認する
 - NULL partition、空table、複数dimension、結果取得上限を実環境で確認する
+
+2026-09-06にtsuboの3 relationを実BigQueryで同時にprofileし、全項目の成功とParquet保存を確認した。保存後はPython APIとHTTP APIから`unique_id`ごとに読み戻した。実環境データを使った失敗・skipと、境界条件の確認は引き続き残る。
 
 ## Phase 3: ライブラリ境界と契約の安定化 — 完了
 

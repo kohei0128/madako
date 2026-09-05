@@ -1,11 +1,13 @@
 import asyncio
 import json
+import sys
 from pathlib import Path
 
 import httpx
 import pytest
 from pydantic import ValidationError
 
+from data_profile.cli import main as cli_main
 from data_profile.server import create_app
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
 from data_profile.sample import sample_models
@@ -99,3 +101,23 @@ def test_same_name_api_uses_unique_id(tmp_path: Path) -> None:
     assert request(app, "/api/models/events/profile").status_code == 409
     assert request(app, "/api/models/model.demo.events/profile").json()["profiles"]
     assert request(app, "/api/models/source.demo.events/profile").json()["profiles"] == []
+
+
+def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    write_profile_storage(sample_models(), tmp_path)
+    captured: dict[str, object] = {}
+
+    def run_server(app, **kwargs) -> None:
+        captured["app"] = app
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(sys, "argv", ["data-profile", "serve", "--storage-dir", str(tmp_path)])
+    monkeypatch.setattr("data_profile.cli.uvicorn.run", run_server)
+
+    cli_main()
+
+    app = captured["app"]
+    list_models = next(route.endpoint for route in app.routes if route.path == "/api/models")
+    models = list_models(include_profiles=False)
+    assert models[0].name == "events"
+    assert models[0].profiles == []

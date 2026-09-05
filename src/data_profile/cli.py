@@ -4,9 +4,8 @@ from pathlib import Path
 import uvicorn
 
 from data_profile.api import DataProfile, ProfilePlan
-from data_profile.repository import DuckDBProfileRepository
 from data_profile.server import create_app
-from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, ParquetProfileStorage, build_parquet_fixture
+from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
 
@@ -64,11 +63,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "serve":
-        repository = DuckDBProfileRepository(
-            args.storage_dir / MODELS_FILENAME,
-            args.storage_dir / PROFILES_FILENAME,
-        )
-        uvicorn.run(create_app(repository), host=args.host, port=args.port)
+        storage = ParquetProfileStorage(args.storage_dir)
+        uvicorn.run(create_app(storage), host=args.host, port=args.port)
     elif args.command == "build-sample":
         models_path, profiles_path = (
             build_parquet_fixture(args.source, args.output_dir) if args.source

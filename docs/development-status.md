@@ -1,6 +1,6 @@
 # Data Profile 開発状況
 
-最終更新: 2026-09-05
+最終更新: 2026-09-06
 
 プロダクトの目的とMVP範囲は[要件定義](product-requirements.md)、開発順序と完了条件は[Roadmap](roadmap.md)、操作手順は[README](../README.md)、保存契約と復旧手順は[Storage Schema](profile-storage-schema.md)を参照する。この文書は現在の実装と残る制限を扱う。
 
@@ -65,7 +65,9 @@ Python unit test、Web production build、wheel / sdist buildを実行した。�
 
 ## 実環境の確認範囲
 
-以前のpilotでは`stg_zaim_transactions`のOverallと`as_of_date`を実BigQueryで生成・保存した。今回のリファクタは合成データとローカルテストで検証しており、実BigQueryへのqueryは実行していない。複数実relation、NULL partition、空table、結果取得上限を含むE2Eは次の確認対象。
+2026-09-06に更新済みのdbt artifactを使い、`mart_pl_transactions`、`pl_money_forward`、`stg_zaim_transactions`の3 relationを実BigQueryで同時にprofileした。3項目とも成功し、全成功後のParquet保存、Python APIでの読み戻し、HTTP APIでのmetadata一覧と`unique_id`別profile取得を確認した。`NUMERIC` / `BIGNUMERIC`の`amount`はMVP非対応型として想定どおりskipされた。
+
+この確認でCLIの`serve`が移行前のrepositoryをserverへ渡してHTTP 500になる不整合を検出し、`ParquetProfileStorage`を渡すよう修正した。実BigQueryでの失敗・skip時の非保存、NULL partition、空table、複数dimension、結果取得上限は次の確認対象。
 
 ## 次に決めること
 
