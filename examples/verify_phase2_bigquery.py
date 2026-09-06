@@ -12,7 +12,6 @@ from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from data_profile.storage import ParquetProfileStorage
 
 
-DEFAULT_PROJECT = "northern-bliss-362623"
 DEFAULT_LOCATION = "asia-northeast1"
 MAX_BYTES = 1_000_000_000
 
@@ -260,7 +259,7 @@ def verify_result_limit(*, project: str, dataset: str, location: str, root: Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--project", default=DEFAULT_PROJECT)
+    parser.add_argument("--project", required=True)
     parser.add_argument("--dataset", required=True)
     parser.add_argument("--location", default=DEFAULT_LOCATION)
     parser.add_argument("--keep-dataset", action="store_true")

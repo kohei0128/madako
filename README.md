@@ -9,7 +9,7 @@ dbt metadataと実データのprofiling結果を同じ画面で確認する、�
 Python 3.12以上、uv、Node.js / npmを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。repository内での`uv sync`はテストとWeb serverを含む開発用依存関係を導入します。
 
 ```bash
-cd app/data_profile
+cd data-profile
 UV_CACHE_DIR=.uv-cache uv sync
 UV_CACHE_DIR=.uv-cache uv run data-profile build-sample
 UV_CACHE_DIR=.uv-cache uv run data-profile serve
@@ -18,7 +18,7 @@ UV_CACHE_DIR=.uv-cache uv run data-profile serve
 別ターミナルでWebを起動します。
 
 ```bash
-cd app/data_profile/web
+cd data-profile/web
 npm ci
 npm run dev
 ```
@@ -151,12 +151,3 @@ uv run python examples/verify_phase2_bigquery.py \
 - `GET /api/health`: processの応答確認。storageの健全性確認ではありません。
 - `GET /api/models`: profileを含む全relation。`?include_profiles=false`でmetadataだけ取得。
 - `GET /api/models/{identifier}/profile`: `unique_id`または一意な名前で取得。未検出は404、曖昧な名前は409。
-
-## このrepositoryの実環境用例
-
-`examples/profile_tsubo.py`はローカルのtsubo project用です。既定ではenabledな全relationのdry runだけを行います。対象を限定する場合は`--select`、実queryを実行する場合は`--execute`を指定します。利用前にdbt artifactsを更新してください。
-
-UIにtsuboのprofileを反映する
-```
-uv run data-profile serve --storage-dir /tmp/tsubo-profile
-```

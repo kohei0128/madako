@@ -13,7 +13,7 @@
     ↓
 [完了] ライブラリ境界・保存契約の安定化
     ↓
-[実装済み・初回CI確認待ち] 再利用可能な0.xライブラリとしての公開準備
+[完了] 再利用可能な0.xライブラリとしての公開準備
 ```
 
 wheelを生成でき、`DataProfile`を公開入口として利用できる。現在はexperimentalな0.1 APIであり、Phase 1の完了はMVP全要件の完了を意味しない。
@@ -78,16 +78,16 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 
 Phase 3は設計・実装・テストまで完了。0.xライブラリとしての契約が安定化。
 
-## Phase 4: 0.xライブラリ公開準備 — 実装済み・初回CI確認待ち
+## Phase 4: 0.xライブラリ公開準備 — 完了
 
-公開準備に必要な構成を実装し、ローカルでunit test、Web build、package build、clean install、外部project smokeまで確認した。GitHub Actionsの初回実行が成功した時点でPhase 4を完了とする。
+公開準備に必要な構成を実装し、ローカルとGitHub Actionsでunit test、Web build、package build、clean install、外部project smoke、ブラウザE2Eを確認した。
 
 - ✅ core依存をPydantic / DuckDBに限定し、FastAPI / Uvicornを`web` extraへ分離。外部`bq` CLIとNode.jsの前提をREADMEへ明記
 - ✅ wheelのinstall・import・sample生成・読み取りを行うCI smoke test
 - ✅ repository外へコピーした最小dbt projectを、install済みwheelの公開APIで実行するsmoke test
 - ✅ Python 3.12 / 3.13のunit test、Web build、package build、install smokeを行うGitHub Actions workflow
 - ✅ Playwrightによる同名relation選択、Refresh、NULL bucket表示の自動テスト
-- ⏳ GitHub Actionsの初回実行結果を確認し、必要なら環境差分を修正
+- ✅ GitHub Actionsの初回実行成功を確認
 
 ## 公開判定
 
@@ -95,9 +95,9 @@ Phase 3は設計・実装・テストまで完了。0.xライブラリとして�
 2. ✅ Warehouse処理とStorage処理を契約に沿って差し替えられる。
 3. ✅ 成功・失敗・skip・保存完了を構造的に判定できる（ProfileResultはPydantic Model）。
 4. ✅ 保存の保証範囲・復旧手順と、config / storageの互換性方針が明確である（config-versioning.md参照）。
-5. ⏳ clean installと別dbt projectのCI、ブラウザE2Eを実装済み。初回workflow成功の確認待ち
+5. ✅ clean installと別dbt projectでの実行をCI・E2Eで確認できる。
 
-**条件1-4を満たし、条件5の実装とローカル検証も完了した。残る公開判定はGitHub Actionsの初回成功確認のみ。**
+**条件1-5を満たし、Phase 4までの公開準備を完了した。**
 
 ## その後の候補
 
