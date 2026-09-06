@@ -6,7 +6,7 @@
 
 ## 概要
 
-Data Profileには3層のバージョニングがあります:
+Madakoには3層のバージョニングがあります:
 
 1. **Parquet Schema Version**: ファイル形式のバージョン（カラム構造、型）
 2. **Profiling Signature**: 計算ロジックに影響する設定の変更検知

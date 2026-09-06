@@ -307,7 +307,7 @@ function App() {
 
   return <main className="shell">
     <aside className="explorer">
-      <div className="brand">data profile <span>alpha</span></div>
+      <div className="brand">madako <span>alpha</span></div>
       <label className="search"><span>Search models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model name" /></label>
       <div className="tree-label">Explorer <button onClick={() => setRevision((value) => value + 1)}>Refresh</button></div>
       {[...explorerGroups].sort(([left], [right]) => left.localeCompare(right)).map(([database, datasets]) => <div className="project-group" key={database}>

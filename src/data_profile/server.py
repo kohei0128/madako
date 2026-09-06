@@ -12,7 +12,7 @@ DEFAULT_STORAGE_DIR = Path(".data-profile")
 
 
 def create_app(storage: ProfileStorage | None = None) -> FastAPI:
-    app = FastAPI(title="Data Profile API", version="0.1.0")
+    app = FastAPI(title="Madako API", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],

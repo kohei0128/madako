@@ -1,6 +1,6 @@
-# Data Profile
+# Madako
 
-dbt metadataと実データのprofiling結果を同じ画面で確認する、ローカルファーストのデータカタログです。現在はexperimentalな0.1 Python APIとWeb UIを提供します。
+Madakoは、dbt metadataと実データのprofiling結果を同じ画面で確認する、ローカルファーストのデータカタログです。`tako`から派生し、metadataを扱うことから名付けました。現在はexperimentalな0.1 Python APIとWeb UIを提供します。
 
 [要件定義](docs/product-requirements.md) / [開発状況](docs/development-status.md) / [Roadmap](docs/roadmap.md) / [Storage Schema・復旧手順](docs/profile-storage-schema.md)
 
@@ -9,7 +9,7 @@ dbt metadataと実データのprofiling結果を同じ画面で確認する、�
 Python 3.12以上、uv、Node.js / npmを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。repository内での`uv sync`はテストとWeb serverを含む開発用依存関係を導入します。
 
 ```bash
-cd data-profile
+cd madako
 UV_CACHE_DIR=.uv-cache uv sync
 UV_CACHE_DIR=.uv-cache uv run data-profile build-sample
 UV_CACHE_DIR=.uv-cache uv run data-profile serve
@@ -18,14 +18,14 @@ UV_CACHE_DIR=.uv-cache uv run data-profile serve
 別ターミナルでWebを起動します。
 
 ```bash
-cd data-profile/web
+cd madako/web
 npm ci
 npm run dev
 ```
 
 UI: `http://localhost:5173`、API仕様: `http://127.0.0.1:8000/docs`。
 
-wheelから利用する場合、Python APIとsample・dbt importにはcoreだけを、`serve`も使う場合はWeb extraを導入します。Node.js / npmはReact UIの開発・build時だけ必要です。
+wheelから利用する場合、Python APIとsample・dbt importにはcoreだけを、`serve`も使う場合はWeb extraを導入します。Node.js / npmはReact UIの開発・build時だけ必要です。0.1 APIとの互換性を保つため、配布package名とCLIは`data-profile`、Python import名は`data_profile`を維持します。
 
 ```bash
 pip install data-profile
@@ -135,7 +135,7 @@ npm run test:e2e
 
 unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。Playwrightは同名relationの選択、Refresh、DATEのNULL bucket表示を検証します。
 
-`.github/workflows/data-profile.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけを一時venvへinstallし、import・sample生成・読み取りに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
+`.github/workflows/madako.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけを一時venvへinstallし、import・sample生成・読み取りに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
 
 Phase 2のBigQuery E2Eを再実行する場合は、一意な検証用dataset名を指定します。スクリプトはdatasetと検証tableを作成し、完了時にdatasetを削除します。tableには24時間の既定有効期限も設定します。
 
