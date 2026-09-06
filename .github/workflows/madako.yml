@@ -33,15 +33,27 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
       - run: uv build
       - name: Install core wheel in an isolated environment
         run: |
+          wheel="$(realpath dist/*.whl)"
           python -m venv "$RUNNER_TEMP/data-profile-smoke"
-          "$RUNNER_TEMP/data-profile-smoke/bin/pip" install dist/*.whl
+          "$RUNNER_TEMP/data-profile-smoke/bin/pip" install "$wheel"
           "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "import importlib.util; import data_profile; assert importlib.util.find_spec('fastapi') is None"
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/data-profile-smoke/bin/data-profile" build-sample --output-dir sample-profile
+          "$RUNNER_TEMP/data-profile-smoke/bin/madako" build-sample --output-dir sample-profile
           "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "from data_profile import DataProfile; assert DataProfile.from_storage('sample-profile').models()"
+          "$RUNNER_TEMP/data-profile-smoke/bin/pip" install "$wheel[web]"
+          "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "from data_profile.server import WEB_DIST_DIR, create_app; assert WEB_DIST_DIR.joinpath('index.html').is_file(); create_app()"
       - name: Use the wheel from a separate minimal dbt project
         run: |
           cp -R e2e/minimal_dbt_project "$RUNNER_TEMP/external-dbt-project"

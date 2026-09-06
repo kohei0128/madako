@@ -17,6 +17,7 @@ web = [
 ]
 
 [project.scripts]
+madako = "data_profile.cli:main"
 data-profile = "data_profile.cli:main"
 
 [dependency-groups]

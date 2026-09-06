@@ -6,43 +6,37 @@ Madakoは、dbt metadataと実データのprofiling結果を同じ画面で確�
 
 ## Quickstart
 
-Python 3.12以上、uv、Node.js / npmを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。repository内での`uv sync`はテストとWeb serverを含む開発用依存関係を導入します。
+Python 3.12以上とuvを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。Web UIはPython packageに同梱されるため、利用時にNode.jsは不要です。
 
 ```bash
 cd madako
 UV_CACHE_DIR=.uv-cache uv sync
-UV_CACHE_DIR=.uv-cache uv run data-profile build-sample
-UV_CACHE_DIR=.uv-cache uv run data-profile serve
+UV_CACHE_DIR=.uv-cache uv run madako build-sample
+UV_CACHE_DIR=.uv-cache uv run madako serve
 ```
 
-別ターミナルでWebを起動します。
+UI: `http://127.0.0.1:8000`、API仕様: `http://127.0.0.1:8000/docs`。
+
+GitHubからCLIとして導入する場合はWeb extraを含めてinstallします。これだけで`madako serve`からUIを利用でき、Madakoのrepositoryをcloneする必要はありません。
 
 ```bash
-cd madako/web
-npm ci
-npm run dev
+uv tool install 'data-profile[web] @ git+https://github.com/kohei0128/madako.git'
+madako --help
 ```
 
-UI: `http://localhost:5173`、API仕様: `http://127.0.0.1:8000/docs`。
+Python APIだけをprojectの依存へ追加する場合は`uv add 'data-profile @ git+https://github.com/kohei0128/madako.git'`を使います。Node.js / npmはReact UIを変更して再buildするときだけ必要です。配布package名とPython import名は0.1 APIとの互換性のため`data-profile` / `data_profile`を維持し、旧`data-profile` CLIもaliasとして利用できます。
 
-wheelから利用する場合、Python APIとsample・dbt importにはcoreだけを、`serve`も使う場合はWeb extraを導入します。Node.js / npmはReact UIの開発・build時だけ必要です。0.1 APIとの互換性を保つため、配布package名とCLIは`data-profile`、Python import名は`data_profile`を維持します。
-
-```bash
-pip install data-profile
-pip install 'data-profile[web]'
-```
-
-既定の保存先は実行directoryの`.data-profile/`です。`build-sample --output-dir`と`serve --storage-dir`で変更できます。独自JSONから生成する場合は`build-sample --source <file>`を使います。Webのbuild成果物をAPI serverが配信する機能はありません。
+既定の保存先は実行directoryの`.data-profile/`です。`build-sample --output-dir`と`serve --storage-dir`で変更できます。独自JSONから生成する場合は`build-sample --source <file>`を使います。`madako serve`はAPIと同梱Web UIを同じprocess・portで配信します。
 
 ## dbt projectの取り込みと実行
 
 事前にdbt側で`target/manifest.json`を生成してください。`catalog.json`があればカラム順・型に使用し、なければmanifestへfallbackします。dbtのparse / buildは暗黙に実行しません。
 
 ```bash
-uv run data-profile import-dbt --project-dir <dbt-project> --output-dir .data-profile
-uv run data-profile plan --storage-dir .data-profile --select model.my_project.events \
+uv run madako import-dbt --project-dir <dbt-project> --output-dir .data-profile
+uv run madako plan --storage-dir .data-profile --select model.my_project.events \
   --project <billing-project> --location <location> --show-sql
-uv run data-profile profile --storage-dir .data-profile --select model.my_project.events \
+uv run madako profile --storage-dir .data-profile --select model.my_project.events \
   --project <billing-project> --location <location>
 ```
 
@@ -124,18 +118,19 @@ Parquet schema v1は`unique_id`でrelationを識別します。旧形式は名�
 ## Test
 
 ```bash
-uv run pytest
-uv build
 cd web
 npm ci
 npm run build
 npx playwright install --with-deps chromium
 npm run test:e2e
+cd ..
+uv run pytest
+uv build
 ```
 
-unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。Playwrightは同名relationの選択、Refresh、DATEのNULL bucket表示を検証します。
+unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。Web buildは`src/data_profile/web_dist`へ出力され、wheelに同梱されます。PlaywrightはVite development serverを使わず`madako serve`へ接続し、同名relationの選択、Refresh、DATEのNULL bucket表示を検証します。
 
-`.github/workflows/madako.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけを一時venvへinstallし、import・sample生成・読み取りに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
+`.github/workflows/madako.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけでのimport・sample生成・読み取り、Web extra追加後の同梱UI読み込みに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
 
 Phase 2のBigQuery E2Eを再実行する場合は、一意な検証用dataset名を指定します。スクリプトはdatasetと検証tableを作成し、完了時にdatasetを削除します。tableには24時間の既定有効期限も設定します。
 

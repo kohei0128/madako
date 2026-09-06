@@ -43,6 +43,13 @@ def test_get_model_profile(storage: ParquetProfileStorage) -> None:
     assert payload["profiles"][0]["columns"][1]["min_value"] == 1.5
 
 
+def test_bundled_web_ui_is_served(storage: ParquetProfileStorage) -> None:
+    response = request(create_app(storage), "/")
+
+    assert response.status_code == 200
+    assert "<title>Madako</title>" in response.text
+
+
 def test_date_and_categorical_profiles_are_reconstructed(storage: ParquetProfileStorage) -> None:
     model = storage.get_model("events")
 
@@ -112,7 +119,7 @@ def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.Monk
         captured["app"] = app
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(sys, "argv", ["data-profile", "serve", "--storage-dir", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", ["madako", "serve", "--storage-dir", str(tmp_path)])
     monkeypatch.setattr("uvicorn.run", run_server)
 
     cli_main()

@@ -25,7 +25,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 | 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
-| Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh。Playwrightで同名relation、Refresh、NULL bucketを検証 | 対応ブラウザはCIで検証するChromiumのみ |
+| Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh。同梱UIを`madako serve`でAPIと同一portから配信。Playwrightで同名relation、Refresh、NULL bucketを検証 | 対応ブラウザはCIで検証するChromiumのみ |
 | テスト・サンプル | 合成データ、dbt artifact、実BigQuery用Phase 2 E2E、外部最小dbt project smoke。unit / package / browser CIを実行 | 実BigQuery E2Eは費用と認証を伴うため手動実行 |
 
 ## 実行と保存の保証
@@ -61,9 +61,9 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test 75件、Web production build、wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
+Python unit test 76件、Web production build、wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
 
-GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeが成功した。Playwrightでは同名relation選択、Refresh、NULL bucket表示の3ケースをChromiumで確認する。
+GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示の3ケースをChromiumで確認する。
 
 ## 実環境の確認範囲
 

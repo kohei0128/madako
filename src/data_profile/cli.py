@@ -22,9 +22,9 @@ def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="data-profile")
+    parser = argparse.ArgumentParser(prog="madako")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    serve = subparsers.add_parser("serve", help="Start the local API server")
+    serve = subparsers.add_parser("serve", help="Start the local Madako app")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument(

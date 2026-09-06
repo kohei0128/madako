@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from data_profile.models import ModelProfile
 from data_profile.repository import AmbiguousProfileError, ProfileNotFoundError
@@ -9,6 +10,7 @@ from data_profile.storage import ParquetProfileStorage, ProfileStorage
 
 
 DEFAULT_STORAGE_DIR = Path(".data-profile")
+WEB_DIST_DIR = Path(__file__).with_name("web_dist")
 
 
 def create_app(storage: ProfileStorage | None = None) -> FastAPI:
@@ -42,6 +44,9 @@ def create_app(storage: ProfileStorage | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(error)) from error
         except ProfileNotFoundError as error:
             raise HTTPException(status_code=404, detail="Model profile not found") from error
+
+    if WEB_DIST_DIR.is_dir():
+        app.mount("/", StaticFiles(directory=WEB_DIST_DIR, html=True), name="web")
 
     return app
 
