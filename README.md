@@ -28,21 +28,42 @@ madako --help
 
 Python APIだけをprojectの依存へ追加する場合は`uv add 'madako @ git+https://github.com/kohei0128/madako.git'`を使います。Node.js / npmはReact UIを変更して再buildするときだけ必要です。配布package名と正式CLIは`madako`、Python import名はAPI互換性のため`data_profile`を維持します。旧`data-profile` CLIもaliasとして利用できます。
 
-既定の保存先は実行directoryの`.data-profile/`です。`build-sample --output-dir`と`serve --storage-dir`で変更できます。独自JSONから生成する場合は`build-sample --source <file>`を使います。`madako serve`はAPIと同梱Web UIを同じprocess・portで配信します。
+設定ファイルがない場合、既定のdbt projectは実行directory、保存先は`.data-profile/`です。`madako serve`はAPIと同梱Web UIを同じprocess・portで配信します。
 
 ## dbt projectの取り込みと実行
 
 事前にdbt側で`target/manifest.json`を生成してください。`catalog.json`があればカラム順・型に使用し、なければmanifestへfallbackします。dbtのparse / buildは暗黙に実行しません。
 
-```bash
-uv run madako import-dbt --project-dir <dbt-project> --output-dir .data-profile
-uv run madako plan --storage-dir .data-profile --select model.my_project.events \
-  --project <billing-project> --location <location> --show-sql
-uv run madako profile --storage-dir .data-profile --select model.my_project.events \
-  --project <billing-project> --location <location>
+dbt project rootに`madako.toml`を置くと、各コマンドでdirectoryやBigQuery設定を繰り返す必要がありません。
+
+```toml
+[project]
+dbt_project_dir = "."
+storage_dir = ".madako"
+
+[bigquery]
+project = "my-billing-project"
+location = "asia-northeast1"
+
+[server]
+host = "127.0.0.1"
+port = 8000
 ```
 
-BigQueryのplan / profileにはインストール・認証済みの`bq` CLIが必要です。`--project`省略時はrelationのdatabase、`--location`省略時は`asia-northeast1`を使います。
+相対pathは`madako.toml`があるdirectoryを基準に解決します。現在のdirectoryから親へ向かって最初の`madako.toml`を自動検出するため、project配下のsubdirectoryからも実行できます。CLI optionを指定した場合は設定ファイルより優先されます。別の設定を使う場合は`madako --config <file> <command>`と指定します。
+
+profile storageをGitで管理しない場合は、上の例なら`.madako/`をdbt projectの`.gitignore`に追加してください。
+
+```bash
+madako import-dbt
+madako plan --show-sql
+madako profile
+madako serve
+```
+
+設定ファイルを使わない場合や一時的に値を変える場合は、従来どおり`--project-dir`、`--output-dir`、`--storage-dir`、`--project`、`--location`、`--host`、`--port`を指定できます。
+
+BigQueryのplan / profileにはインストール・認証済みの`bq` CLIが必要です。設定と`--project`の両方を省略した場合はrelationのdatabase、locationを省略した場合は`asia-northeast1`を使います。
 
 `--select`省略時はenabledな全relationを対象にします。指定できるのは完全一致の`unique_id`または一意な名前です。同名relationがある場合は`unique_id`を使ってください。dbt selection syntaxには未対応です。
 

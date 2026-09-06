@@ -89,6 +89,7 @@ Phase 3は設計・実装・テストまで完了。0.xライブラリとして�
 - ✅ Playwrightによる同名relation選択、Refresh、NULL bucket表示の自動テスト
 - ✅ GitHub Actionsの初回実行成功を確認
 - ✅ 配布package名と正式CLIを`madako`へ統一し、Web UIをwheelへ同梱して`madako serve`だけでAPIとUIを配信
+- ✅ project-localな`madako.toml`からdbt project、storage、BigQuery、server設定を自動読込
 
 ## 公開判定
 
