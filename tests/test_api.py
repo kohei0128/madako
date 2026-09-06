@@ -2,11 +2,13 @@ import asyncio
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from pydantic import ValidationError
 
+from data_profile.api import DataProfile
 from data_profile.cli import main as cli_main
 from data_profile.models import ColumnMetadata, ColumnProfile, ProfileSlice
 from data_profile.server import create_app
@@ -195,6 +197,51 @@ def test_cli_options_override_config(
     assert list_models(include_profiles=False)[0].name == "events"
     assert captured["kwargs"] == {"host": "127.0.0.1", "port": 9000}
     assert not configured_storage.exists()
+
+
+def test_cli_profile_imports_dbt_artifacts_before_profiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_dir = tmp_path / "dbt-project"
+    storage_dir = tmp_path / ".madako"
+    (tmp_path / "madako.toml").write_text(
+        "[project]\ndbt_project_dir = 'dbt-project'\nstorage_dir = '.madako'\n",
+        encoding="utf-8",
+    )
+    calls: list[object] = []
+    plan = SimpleNamespace(items=())
+    result = SimpleNamespace(
+        items=(),
+        successful=True,
+        profiled_models=(),
+        plan=plan,
+    )
+    app = SimpleNamespace(
+        storage_dir=storage_dir,
+        plan=lambda **kwargs: calls.append(("plan", kwargs)) or plan,
+        run=lambda received_plan: calls.append(("run", received_plan)) or result,
+    )
+
+    def import_dbt(
+        received_project_dir: Path,
+        received_storage_dir: Path,
+    ) -> SimpleNamespace:
+        calls.append(("import", received_project_dir, received_storage_dir))
+        return app
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["madako", "profile", "--select", "events"])
+    monkeypatch.setattr(DataProfile, "from_dbt_project", import_dbt)
+
+    cli_main()
+
+    assert calls[0] == ("import", project_dir, storage_dir)
+    assert calls[1] == (
+        "plan",
+        {"select": "events", "project": None, "location": "asia-northeast1"},
+    )
+    assert calls[2] == ("run", plan)
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
