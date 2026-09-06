@@ -61,7 +61,7 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test 76件、Web production build、wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
+Python unit test 76件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
 
 GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示の3ケースをChromiumで確認する。
 

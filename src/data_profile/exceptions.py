@@ -1,4 +1,4 @@
-"""Public exception hierarchy for data-profile."""
+"""Public exception hierarchy for Madako."""
 
 
 class DataProfileError(Exception):
