@@ -6,7 +6,7 @@ dbt metadataと実データのprofiling結果を同じ画面で確認する、�
 
 ## Quickstart
 
-Python 3.12以上、uv、Node.js / npmを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。
+Python 3.12以上、uv、Node.js / npmを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。repository内での`uv sync`はテストとWeb serverを含む開発用依存関係を導入します。
 
 ```bash
 cd app/data_profile
@@ -24,6 +24,13 @@ npm run dev
 ```
 
 UI: `http://localhost:5173`、API仕様: `http://127.0.0.1:8000/docs`。
+
+wheelから利用する場合、Python APIとsample・dbt importにはcoreだけを、`serve`も使う場合はWeb extraを導入します。Node.js / npmはReact UIの開発・build時だけ必要です。
+
+```bash
+pip install data-profile
+pip install 'data-profile[web]'
+```
 
 既定の保存先は実行directoryの`.data-profile/`です。`build-sample --output-dir`と`serve --storage-dir`で変更できます。独自JSONから生成する場合は`build-sample --source <file>`を使います。Webのbuild成果物をAPI serverが配信する機能はありません。
 
@@ -104,7 +111,7 @@ print(result.successful, result.storage_updated)
 
 公開例外の基底は`DataProfileError`です。用途別に`ArtifactError`、`PlanningError`、`WarehouseError`、`ResultValidationError`、`StorageError`を公開しています。従来の`ProfilingError`はplanning・warehouse・result validationをまとめて捕捉する互換用の基底です。保存実装の予期しない失敗は`StorageOperationError`へ包み、元の例外を`__cause__`に保持します。
 
-`storage=`には`ProfileStorage`の`paths / exists / load / save`を実装するオブジェクトを指定できます。既定は`ParquetProfileStorage`で、独自storageは取込・plan・保存で共用されます。現在の契約はローカル2ファイルのパスを含みます。Web serverは別のrepository契約を使用します。
+`storage=`には`ProfileStorage`の`paths / exists / load / save`を実装するオブジェクトを指定できます。既定は`ParquetProfileStorage`で、独自storageは取込・plan・保存とWeb serverで共用されます。現在の契約はローカル2ファイルのパスを含みます。
 
 ## 保存と復旧
 
@@ -118,11 +125,17 @@ Parquet schema v1は`unique_id`でrelationを識別します。旧形式は名�
 
 ```bash
 uv run pytest
+uv build
 cd web
+npm ci
 npm run build
+npx playwright install --with-deps chromium
+npm run test:e2e
 ```
 
-unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。ブラウザ自動テストとCIは[Roadmap](docs/roadmap.md)で管理します。
+unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。Playwrightは同名relationの選択、Refresh、DATEのNULL bucket表示を検証します。
+
+`.github/workflows/data-profile.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけを一時venvへinstallし、import・sample生成・読み取りに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
 
 Phase 2のBigQuery E2Eを再実行する場合は、一意な検証用dataset名を指定します。スクリプトはdatasetと検証tableを作成し、完了時にdatasetを削除します。tableには24時間の既定有効期限も設定します。
 

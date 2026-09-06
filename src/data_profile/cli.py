@@ -1,10 +1,7 @@
 import argparse
 from pathlib import Path
 
-import uvicorn
-
 from data_profile.api import DataProfile, ProfilePlan
-from data_profile.server import create_app
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
@@ -63,6 +60,14 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "serve":
+        try:
+            import uvicorn
+
+            from data_profile.server import create_app
+        except ImportError as error:
+            raise SystemExit(
+                "Web dependencies are not installed; install data-profile[web]"
+            ) from error
         storage = ParquetProfileStorage(args.storage_dir)
         uvicorn.run(create_app(storage), host=args.host, port=args.port)
     elif args.command == "build-sample":

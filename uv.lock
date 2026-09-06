@@ -66,29 +66,38 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
-    { name = "fastapi" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+web = [
+    { name = "fastapi" },
     { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "fastapi" },
     { name = "httpx" },
     { name = "pytest" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.4.0,<2" },
-    { name = "fastapi", specifier = ">=0.116.0,<1" },
+    { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.116.0,<1" },
     { name = "pydantic", specifier = ">=2.11.0,<3" },
-    { name = "uvicorn", specifier = ">=0.35.0,<1" },
+    { name = "uvicorn", marker = "extra == 'web'", specifier = ">=0.35.0,<1" },
 ]
+provides-extras = ["web"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "fastapi", specifier = ">=0.116.0,<1" },
     { name = "httpx", specifier = ">=0.28.0,<1" },
     { name = "pytest", specifier = ">=8.4.0,<9" },
+    { name = "uvicorn", specifier = ">=0.35.0,<1" },
 ]
 
 [[package]]

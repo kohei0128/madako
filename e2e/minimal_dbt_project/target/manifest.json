@@ -1,0 +1,34 @@
+{
+  "metadata": {
+    "project_name": "external_demo",
+    "generated_at": "2026-09-06T00:00:00Z"
+  },
+  "nodes": {
+    "model.external_demo.events": {
+      "unique_id": "model.external_demo.events",
+      "resource_type": "model",
+      "package_name": "external_demo",
+      "name": "events",
+      "alias": "events",
+      "database": "external-project",
+      "schema": "analytics",
+      "description": "Minimal external project model",
+      "columns": {
+        "id": {"name": "id", "data_type": "INT64", "description": "Identifier"},
+        "amount": {"name": "amount", "data_type": "NUMERIC", "description": "Exact amount"}
+      },
+      "config": {
+        "materialized": "table",
+        "tags": ["phase4-smoke"],
+        "meta": {
+          "profiling": {
+            "enabled": true,
+            "dimensions": [],
+            "max_bytes_billed": 1000000
+          }
+        }
+      }
+    }
+  },
+  "sources": {}
+}

@@ -113,7 +113,7 @@ def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.Monk
         captured["kwargs"] = kwargs
 
     monkeypatch.setattr(sys, "argv", ["data-profile", "serve", "--storage-dir", str(tmp_path)])
-    monkeypatch.setattr("data_profile.cli.uvicorn.run", run_server)
+    monkeypatch.setattr("uvicorn.run", run_server)
 
     cli_main()
 

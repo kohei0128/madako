@@ -7,6 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.11.0,<3",
     "duckdb>=1.4.0,<2",
+]
+
+[project.optional-dependencies]
+web = [
     "fastapi>=0.116.0,<1",
     "uvicorn>=0.35.0,<1",
 ]
@@ -16,8 +20,10 @@ data-profile = "data_profile.cli:main"
 
 [dependency-groups]
 dev = [
+    "fastapi>=0.116.0,<1",
     "httpx>=0.28.0,<1",
     "pytest>=8.4.0,<9",
+    "uvicorn>=0.35.0,<1",
 ]
 
 [build-system]

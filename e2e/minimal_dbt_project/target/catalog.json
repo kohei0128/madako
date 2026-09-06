@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "generated_at": "2026-09-06T00:00:00Z"
+  },
+  "nodes": {
+    "model.external_demo.events": {
+      "columns": {
+        "id": {"name": "id", "type": "INT64", "index": 1},
+        "amount": {"name": "amount", "type": "NUMERIC", "index": 2}
+      }
+    }
+  },
+  "sources": {}
+}

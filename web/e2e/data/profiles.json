@@ -1,0 +1,60 @@
+[
+  {
+    "unique_id": "model.phase4.events",
+    "resource_type": "model",
+    "name": "events",
+    "database": "demo",
+    "schema_name": "analytics",
+    "relation_name": "demo.analytics.events",
+    "description": "Profiled model",
+    "materialization": "table",
+    "columns": [
+      {"name": "event_date", "data_type": "DATE", "description": "Event date"},
+      {"name": "amount", "data_type": "NUMERIC", "description": "Exact amount"}
+    ],
+    "profiled_at": "2026-09-06T00:00:00Z",
+    "profiles": [
+      {
+        "dimension_name": null,
+        "dimension_value": null,
+        "record_count": 10,
+        "columns": [
+          {"name": "event_date", "data_type": "DATE", "null_count": 2, "null_rate": 0.2, "min_value": "2026-08-31", "max_value": "2026-09-01"},
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.1, "min_value": "-12345678901234567890.123456789", "max_value": "12345678901234567890.123456789"}
+        ]
+      },
+      {
+        "dimension_name": "event_date",
+        "dimension_value": "2026-09-01",
+        "record_count": 8,
+        "columns": [
+          {"name": "event_date", "data_type": "DATE", "null_count": 0, "null_rate": 0, "min_value": "2026-09-01", "max_value": "2026-09-01"},
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.125, "min_value": "-10.5", "max_value": "12345678901234567890.123456789"}
+        ]
+      },
+      {
+        "dimension_name": "event_date",
+        "dimension_value": null,
+        "record_count": 2,
+        "columns": [
+          {"name": "event_date", "data_type": "DATE", "null_count": 2, "null_rate": 1, "min_value": null, "max_value": null},
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 0, "null_rate": 0, "min_value": "-12345678901234567890.123456789", "max_value": "2.5"}
+        ]
+      }
+    ]
+  },
+  {
+    "unique_id": "source.phase4.events",
+    "resource_type": "source",
+    "name": "events",
+    "database": "demo",
+    "schema_name": "analytics",
+    "relation_name": "demo.analytics.raw_events",
+    "description": "Same-name unprofiled source",
+    "materialization": "source",
+    "columns": [
+      {"name": "event_date", "data_type": "DATE", "description": "Event date"}
+    ],
+    "profiles": []
+  }
+]
