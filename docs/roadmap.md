@@ -88,7 +88,7 @@ Phase 3は設計・実装・テストまで完了。0.xライブラリとして�
 - ✅ Python 3.12 / 3.13のunit test、Web build、package build、install smokeを行うGitHub Actions workflow
 - ✅ Playwrightによる同名relation選択、Refresh、NULL bucket表示の自動テスト
 - ✅ GitHub Actionsの初回実行成功を確認
-- ✅ `madako` CLIを追加し、Web UIをwheelへ同梱して`madako serve`だけでAPIとUIを配信
+- ✅ 配布package名と正式CLIを`madako`へ統一し、Web UIをwheelへ同梱して`madako serve`だけでAPIとUIを配信
 
 ## 公開判定
 

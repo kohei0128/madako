@@ -20,11 +20,13 @@ UI: `http://127.0.0.1:8000`、API仕様: `http://127.0.0.1:8000/docs`。
 GitHubからCLIとして導入する場合はWeb extraを含めてinstallします。これだけで`madako serve`からUIを利用でき、Madakoのrepositoryをcloneする必要はありません。
 
 ```bash
-uv tool install 'data-profile[web] @ git+https://github.com/kohei0128/madako.git'
+uv tool install 'madako[web] @ git+https://github.com/kohei0128/madako.git'
 madako --help
 ```
 
-Python APIだけをprojectの依存へ追加する場合は`uv add 'data-profile @ git+https://github.com/kohei0128/madako.git'`を使います。Node.js / npmはReact UIを変更して再buildするときだけ必要です。配布package名とPython import名は0.1 APIとの互換性のため`data-profile` / `data_profile`を維持し、旧`data-profile` CLIもaliasとして利用できます。
+旧配布名で導入済みの場合は、先に`uv tool uninstall data-profile`で削除してから再installしてください。
+
+Python APIだけをprojectの依存へ追加する場合は`uv add 'madako @ git+https://github.com/kohei0128/madako.git'`を使います。Node.js / npmはReact UIを変更して再buildするときだけ必要です。配布package名と正式CLIは`madako`、Python import名はAPI互換性のため`data_profile`を維持します。旧`data-profile` CLIもaliasとして利用できます。
 
 既定の保存先は実行directoryの`.data-profile/`です。`build-sample --output-dir`と`serve --storage-dir`で変更できます。独自JSONから生成する場合は`build-sample --source <file>`を使います。`madako serve`はAPIと同梱Web UIを同じprocess・portで配信します。
 

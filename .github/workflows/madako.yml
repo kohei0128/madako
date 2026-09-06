@@ -46,18 +46,18 @@ jobs:
       - name: Install core wheel in an isolated environment
         run: |
           wheel="$(realpath dist/*.whl)"
-          python -m venv "$RUNNER_TEMP/data-profile-smoke"
-          "$RUNNER_TEMP/data-profile-smoke/bin/pip" install "$wheel"
-          "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "import importlib.util; import data_profile; assert importlib.util.find_spec('fastapi') is None"
+          python -m venv "$RUNNER_TEMP/madako-smoke"
+          "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel"
+          "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import data_profile; assert importlib.util.find_spec('fastapi') is None"
           cd "$RUNNER_TEMP"
-          "$RUNNER_TEMP/data-profile-smoke/bin/madako" build-sample --output-dir sample-profile
-          "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "from data_profile import DataProfile; assert DataProfile.from_storage('sample-profile').models()"
-          "$RUNNER_TEMP/data-profile-smoke/bin/pip" install "$wheel[web]"
-          "$RUNNER_TEMP/data-profile-smoke/bin/python" -c "from data_profile.server import WEB_DIST_DIR, create_app; assert WEB_DIST_DIR.joinpath('index.html').is_file(); create_app()"
+          "$RUNNER_TEMP/madako-smoke/bin/madako" build-sample --output-dir sample-profile
+          "$RUNNER_TEMP/madako-smoke/bin/python" -c "from data_profile import DataProfile; assert DataProfile.from_storage('sample-profile').models()"
+          "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel[web]"
+          "$RUNNER_TEMP/madako-smoke/bin/python" -c "from data_profile.server import WEB_DIST_DIR, create_app; assert WEB_DIST_DIR.joinpath('index.html').is_file(); create_app()"
       - name: Use the wheel from a separate minimal dbt project
         run: |
           cp -R e2e/minimal_dbt_project "$RUNNER_TEMP/external-dbt-project"
-          "$RUNNER_TEMP/data-profile-smoke/bin/python" e2e/verify_external_project.py \
+          "$RUNNER_TEMP/madako-smoke/bin/python" e2e/verify_external_project.py \
             --project-dir "$RUNNER_TEMP/external-dbt-project" \
             --storage-dir "$RUNNER_TEMP/external-profile"
 

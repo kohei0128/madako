@@ -66,7 +66,7 @@ def main() -> None:
             from data_profile.server import create_app
         except ImportError as error:
             raise SystemExit(
-                "Web dependencies are not installed; install data-profile[web]"
+                "Web dependencies are not installed; install madako[web]"
             ) from error
         storage = ParquetProfileStorage(args.storage_dir)
         uvicorn.run(create_app(storage), host=args.host, port=args.port)

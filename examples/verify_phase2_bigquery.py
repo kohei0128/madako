@@ -285,7 +285,7 @@ def main() -> None:
             dataset=args.dataset,
             location=args.location,
         )
-        with tempfile.TemporaryDirectory(prefix="data-profile-phase2-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="madako-phase2-") as temp_dir:
             root = Path(temp_dir)
             verify_boundaries(
                 project=args.project,
