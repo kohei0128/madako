@@ -55,11 +55,11 @@ port = 8000
 profile storageをGitで管理しない場合は、上の例なら`.madako/`をdbt projectの`.gitignore`に追加してください。
 
 ```bash
-madako import-dbt
-madako plan --show-sql
 madako profile
 madako serve
 ```
+
+`madako profile`は実行前に設定されたdbt projectのartifactをstorageへ自動importします。BigQueryへ接続せずmetadataだけを更新したい場合は`madako import-dbt`を使います。`madako plan`は保存済みstorageを対象にするため、必要に応じて先に`madako import-dbt`を実行してください。
 
 設定ファイルを使わない場合や一時的に値を変える場合は、従来どおり`--project-dir`、`--output-dir`、`--storage-dir`、`--project`、`--location`、`--host`、`--port`を指定できます。
 

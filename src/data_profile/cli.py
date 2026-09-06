@@ -107,7 +107,12 @@ def main() -> None:
         )
         _print_plan(plan_result, show_sql=args.show_sql)
     elif args.command == "profile":
-        data_profile = DataProfile.from_storage(args.storage_dir or config.storage_dir)
+        storage_dir = args.storage_dir or config.storage_dir
+        data_profile = DataProfile.from_dbt_project(
+            config.dbt_project_dir,
+            storage_dir,
+        )
+        print(f"Imported dbt artifacts from {config.dbt_project_dir}")
         plan_result = data_profile.plan(
             select=args.select,
             project=args.project or config.bigquery_project,

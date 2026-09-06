@@ -18,7 +18,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 
 | 領域 | 実装済み | 残る制限 |
 |---|---|---|
-| dbt import | project内のmodels / sources / columns / tests、catalog優先とmanifest fallback、古いcatalogへの警告 | dbtのparse / buildは呼び出さない |
+| dbt import | project内のmodels / sources / columns / tests、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
 | 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE dimension、型別metrics、NULL bucket | categoricalは保存・表示のみ。SQL生成はDATE dimensionだけ |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | TIMESTAMP、複合型などは除外 |
@@ -61,7 +61,7 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test 84件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
+Python unit test 85件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
 
 GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示の3ケースをChromiumで確認する。
 
