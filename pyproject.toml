@@ -3,6 +3,7 @@ name = "data-profile"
 version = "0.1.0"
 description = "Madako: a local-first catalog combining dbt metadata with data profiles."
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.11.0,<3",
