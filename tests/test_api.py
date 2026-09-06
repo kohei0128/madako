@@ -112,14 +112,27 @@ def test_same_name_api_uses_unique_id(tmp_path: Path) -> None:
 
 
 def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    write_profile_storage(sample_models(), tmp_path)
+    storage_dir = tmp_path / "profile"
+    write_profile_storage(sample_models(), storage_dir)
+    (tmp_path / "madako.toml").write_text(
+        """
+[project]
+storage_dir = "profile"
+
+[server]
+host = "0.0.0.0"
+port = 8123
+""".strip(),
+        encoding="utf-8",
+    )
     captured: dict[str, object] = {}
 
     def run_server(app, **kwargs) -> None:
         captured["app"] = app
         captured["kwargs"] = kwargs
 
-    monkeypatch.setattr(sys, "argv", ["madako", "serve", "--storage-dir", str(tmp_path)])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["madako", "serve"])
     monkeypatch.setattr("uvicorn.run", run_server)
 
     cli_main()
@@ -129,6 +142,59 @@ def test_cli_serve_uses_profile_storage(tmp_path: Path, monkeypatch: pytest.Monk
     models = list_models(include_profiles=False)
     assert models[0].name == "events"
     assert models[0].profiles == []
+    assert captured["kwargs"] == {"host": "0.0.0.0", "port": 8123}
+
+
+def test_cli_build_sample_discovers_parent_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "madako.toml").write_text(
+        "[project]\nstorage_dir = '.madako'\n",
+        encoding="utf-8",
+    )
+    child = tmp_path / "models"
+    child.mkdir()
+    monkeypatch.chdir(child)
+    monkeypatch.setattr(sys, "argv", ["madako", "build-sample"])
+
+    cli_main()
+
+    assert ParquetProfileStorage(tmp_path / ".madako").exists()
+
+
+def test_cli_options_override_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_storage = tmp_path / "configured"
+    override_storage = tmp_path / "override"
+    write_profile_storage(sample_models(), override_storage)
+    (tmp_path / "madako.toml").write_text(
+        "[project]\nstorage_dir = 'configured'\n[server]\nport = 8123\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def run_server(app, **kwargs) -> None:
+        captured["app"] = app
+        captured["kwargs"] = kwargs
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["madako", "serve", "--storage-dir", str(override_storage), "--port", "9000"],
+    )
+    monkeypatch.setattr("uvicorn.run", run_server)
+
+    cli_main()
+
+    app = captured["app"]
+    list_models = next(route.endpoint for route in app.routes if route.path == "/api/models")
+    assert list_models(include_profiles=False)[0].name == "events"
+    assert captured["kwargs"] == {"host": "127.0.0.1", "port": 9000}
+    assert not configured_storage.exists()
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:

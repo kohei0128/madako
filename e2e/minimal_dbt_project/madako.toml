@@ -1,0 +1,7 @@
+[project]
+dbt_project_dir = "."
+storage_dir = ".madako-profile"
+
+[bigquery]
+project = "external-project"
+location = "asia-northeast1"
