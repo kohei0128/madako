@@ -207,7 +207,7 @@ function LineageCard({ id, relation, current = false, onSelect }: {
     ? `${relation.resource_type} · ${relation.database} / ${relation.schema}`
     : id;
   const content = <>
-    <span className="lineage-kind">{current ? "Current" : relation?.resource_type ?? "Unavailable"}</span>
+    <span className="lineage-kind">{relation?.resource_type ?? "Unavailable"}</span>
     <strong>{name}</strong>
     <small>{context}</small>
   </>;

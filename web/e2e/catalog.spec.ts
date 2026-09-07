@@ -46,6 +46,7 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
   const downstream = lineage.getByRole("button", { name: "Open model event_summary" });
   await expect(upstream).toBeVisible();
   await expect(downstream).toBeVisible();
+  await expect(selected.locator(".lineage-kind")).toHaveText("model");
   const [upstreamBox, selectedBox, downstreamBox] = await Promise.all([
     upstream.boundingBox(), selected.boundingBox(), downstream.boundingBox(),
   ]);
@@ -56,5 +57,6 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
 
   await expect(page.locator(".title-row h1")).toHaveText("events");
   await expect(page.locator(".pill")).toHaveText("source");
+  await expect(page.getByLabel("Direct lineage").locator(".lineage-card.current .lineage-kind")).toHaveText("source");
   await expect(page.getByLabel("Direct lineage").getByRole("button", { name: "Open model events" })).toBeVisible();
 });
