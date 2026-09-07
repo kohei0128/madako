@@ -43,7 +43,11 @@ def test_get_model_profile(storage: ParquetProfileStorage) -> None:
     assert payload["profiles"][0]["columns"][1]["empty_string_count"] == 0
     assert payload["profiles"][0]["columns"][1]["missing_rate"] == 0.5
     assert payload["profiles"][0]["columns"][1]["min_value"] == 1.5
-    assert payload["upstream_ids"] == ["source.demo.raw_events"]
+    assert payload["upstream_ids"] == [
+        "source.demo.raw_events",
+        "source.demo.raw_users",
+        "source.demo.raw_campaigns",
+    ]
 
 
 def test_bundled_web_ui_is_served(storage: ParquetProfileStorage) -> None:
@@ -101,7 +105,11 @@ def test_metadata_list_omits_metrics(storage: ParquetProfileStorage) -> None:
     assert response.json()[0]["profiles"] == []
     assert response.json()[0]["columns"]
     assert response.json()[0]["profiled_at"]
-    assert response.json()[0]["upstream_ids"] == ["source.demo.raw_events"]
+    assert response.json()[0]["upstream_ids"] == [
+        "source.demo.raw_events",
+        "source.demo.raw_users",
+        "source.demo.raw_campaigns",
+    ]
 
 
 def test_same_name_api_uses_unique_id(tmp_path: Path) -> None:

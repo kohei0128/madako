@@ -19,7 +19,11 @@ def sample_models() -> list[ModelProfile]:
     events = ModelProfile(
         unique_id="model.demo.events", name="events", database="demo", schema_name="analytics",
         materialization="table", description="Synthetic example data",
-        upstream_ids=["source.demo.raw_events"],
+        upstream_ids=[
+            "source.demo.raw_events",
+            "source.demo.raw_users",
+            "source.demo.raw_campaigns",
+        ],
         columns=[ColumnMetadata(name="category", data_type="STRING"),
                  ColumnMetadata(name="amount", data_type="FLOAT64")],
         profiled_at=datetime(2026, 9, 1, tzinfo=UTC),
@@ -37,6 +41,18 @@ def sample_models() -> list[ModelProfile]:
         columns=[ColumnMetadata(name="category", data_type="STRING"),
                  ColumnMetadata(name="amount", data_type="FLOAT64")],
     )
+    raw_users = ModelProfile(
+        unique_id="source.demo.raw_users", resource_type="source", name="raw_users",
+        database="demo", schema_name="raw", relation_name="demo.raw.raw_users",
+        materialization="source", description="Synthetic upstream user source",
+        columns=[ColumnMetadata(name="user_id", data_type="STRING")],
+    )
+    raw_campaigns = ModelProfile(
+        unique_id="source.demo.raw_campaigns", resource_type="source", name="raw_campaigns",
+        database="demo", schema_name="raw", relation_name="demo.raw.raw_campaigns",
+        materialization="source", description="Synthetic upstream campaign source",
+        columns=[ColumnMetadata(name="campaign_id", data_type="STRING")],
+    )
     summary = ModelProfile(
         unique_id="model.demo.event_summary", name="summary",
         database="demo", schema_name="analytics", materialization="view",
@@ -44,4 +60,4 @@ def sample_models() -> list[ModelProfile]:
         columns=[ColumnMetadata(name="category", data_type="STRING"),
                  ColumnMetadata(name="total_amount", data_type="FLOAT64")],
     )
-    return [events, raw_events, summary]
+    return [events, raw_events, raw_users, raw_campaigns, summary]
