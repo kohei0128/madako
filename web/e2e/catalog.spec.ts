@@ -41,10 +41,18 @@ test("shows the null date partition separately", async ({ page }) => {
 test("shows and navigates direct upstream and downstream lineage", async ({ page }) => {
   const lineage = page.getByLabel("Direct lineage");
   await expect(lineage.getByText("1 upstream · 1 downstream")).toBeVisible();
-  await expect(lineage.getByRole("button", { name: "Open source events" })).toBeVisible();
-  await expect(lineage.getByRole("button", { name: "Open model event_summary" })).toBeVisible();
+  const upstream = lineage.getByRole("button", { name: "Open source events" });
+  const selected = lineage.locator(".lineage-card.current");
+  const downstream = lineage.getByRole("button", { name: "Open model event_summary" });
+  await expect(upstream).toBeVisible();
+  await expect(downstream).toBeVisible();
+  const [upstreamBox, selectedBox, downstreamBox] = await Promise.all([
+    upstream.boundingBox(), selected.boundingBox(), downstream.boundingBox(),
+  ]);
+  expect(Math.abs(upstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(downstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
 
-  await lineage.getByRole("button", { name: "Open source events" }).click();
+  await upstream.click();
 
   await expect(page.locator(".title-row h1")).toHaveText("events");
   await expect(page.locator(".pill")).toHaveText("source");

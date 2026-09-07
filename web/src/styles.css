@@ -128,14 +128,14 @@ code { color: #21684e; background: #edf6f2; padding: 2px 5px; border-radius: 3px
 .lineage-heading span, .lineage-heading > small { color: #7a8883; font-size: 9px; }
 .lineage-flow { display: grid; grid-template-columns: minmax(160px, 1fr) 26px minmax(180px, 1.15fr) 26px minmax(160px, 1fr); align-items: center; gap: 8px; min-height: 142px; padding: 16px; background: #edf2f0; border: 1px solid #d7dfdc; overflow-x: auto; }
 .lineage-column { align-self: stretch; min-width: 160px; }
-.lineage-column.focus { min-width: 180px; align-self: center; }
+.lineage-column.focus { min-width: 180px; align-self: stretch; }
 .lineage-column h3 { margin: 0 0 7px; color: #75837e; font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .lineage-nodes { display: grid; gap: 6px; }
 .lineage-card { display: block; width: 100%; min-width: 0; padding: 10px 11px; color: #263630; background: #fff; border: 1px solid #ccd8d3; border-radius: 5px; text-align: left; box-shadow: 0 2px 6px rgba(22, 46, 38, .035); }
 button.lineage-card { cursor: pointer; }
 button.lineage-card:hover { border-color: #75b89c; background: #f8fcfa; }
 button.lineage-card:disabled { color: #75827e; background: #f4f6f5; border-style: dashed; box-shadow: none; cursor: default; }
-.lineage-card.current { padding: 14px; color: #174b38; background: #e0f2ea; border: 1px solid #70b596; box-shadow: 0 3px 10px rgba(28, 105, 73, .08); }
+.lineage-card.current { padding: 10px 11px; color: #174b38; background: #e0f2ea; border: 1px solid #70b596; box-shadow: 0 3px 10px rgba(28, 105, 73, .08); }
 .lineage-card strong, .lineage-card small, .lineage-kind { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lineage-card strong { margin: 3px 0; font-size: 11px; }
 .lineage-card small { color: #73817c; font-size: 8px; }
