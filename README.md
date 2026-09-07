@@ -1,40 +1,61 @@
 # Madako
 
-Madakoは、dbt metadataと実データのprofiling結果を同じ画面で確認する、ローカルファーストのデータカタログです。`tako`から派生し、metadataを扱うことから名付けました。現在はexperimentalな0.1 Python APIとWeb UIを提供します。
+Madakoは、**dbtのドキュメントと実データの状態を一緒に見られる、ローカルファーストのデータカタログ**です。
 
-[要件定義](docs/product-requirements.md) / [開発状況](docs/development-status.md) / [Roadmap](docs/roadmap.md) / [Storage Schema・復旧手順](docs/profile-storage-schema.md)
+「このモデルは何を表すのか」だけでなく、「何行あるか」「NULLは増えていないか」「値はどの範囲か」まで、ブラウザから確認できます。
 
-## Quickstart
+現在はBigQueryに対応したexperimentalなバージョンです。
 
-Python 3.12以上とuvを使用します。サンプルはパッケージ内の合成データで、dbtやBigQueryの接続は不要です。Web UIはPython packageに同梱されるため、利用時にNode.jsは不要です。
+## Madakoでできること
 
-```bash
-cd madako
-UV_CACHE_DIR=.uv-cache uv sync
-UV_CACHE_DIR=.uv-cache uv run madako build-sample
-UV_CACHE_DIR=.uv-cache uv run madako serve
+- dbtのモデル・ソース・カラム・説明・テストを一覧表示
+- 実データから行数、NULL率、Distinct数、Min / Maxなどを取得
+- DATEカラムごとの変化を比較
+- profiling対象とクエリごとの上限をdbtのYAMLで管理
+- 結果をローカルのParquetへ保存し、`madako serve`だけで閲覧
+
+```text
+dbt artifacts + BigQuery
+          ↓
+        Madako
+          ↓
+  Parquet storage → Web UI
 ```
 
-UI: `http://127.0.0.1:8000`、API仕様: `http://127.0.0.1:8000/docs`。
+## まず画面を試す
 
-GitHubからCLIとして導入する場合はWeb extraを含めてinstallします。これだけで`madako serve`からUIを利用でき、Madakoのrepositoryをcloneする必要はありません。
+Python 3.12以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
 
 ```bash
 uv tool install 'madako[web] @ git+https://github.com/kohei0128/madako.git'
-madako --help
+madako build-sample --output-dir .madako
+madako serve --storage-dir .madako
 ```
 
-旧配布名で導入済みの場合は、先に`uv tool uninstall data-profile`で削除してから再installしてください。
+ブラウザで <http://127.0.0.1:8000> を開きます。API仕様は <http://127.0.0.1:8000/docs> です。
 
-Python APIだけをprojectの依存へ追加する場合は`uv add 'madako @ git+https://github.com/kohei0128/madako.git'`を使います。Node.js / npmはReact UIを変更して再buildするときだけ必要です。配布package名と正式CLIは`madako`、Python import名はAPI互換性のため`data_profile`を維持します。旧`data-profile` CLIもaliasとして利用できます。
+## 自分のdbt projectで使う
 
-設定ファイルがない場合、既定のdbt projectは実行directory、保存先は`.data-profile/`です。`madako serve`はAPIと同梱Web UIを同じprocess・portで配信します。
+### 1. profiling対象を選ぶ
 
-## dbt projectの取り込みと実行
+対象モデルのYAMLに`meta.profiling`を追加します。
 
-事前にdbt側で`target/manifest.json`を生成してください。`catalog.json`があればカラム順・型に使用し、なければmanifestへfallbackします。dbtのparse / buildは暗黙に実行しません。
+```yaml
+models:
+  - name: events
+    config:
+      meta:
+        profiling:
+          enabled: true
+          dimensions: [event_date]
+          max_bytes_billed: 1000000000
+```
 
-dbt project rootに`madako.toml`を置くと、各コマンドでdirectoryやBigQuery設定を繰り返す必要がありません。
+`dimensions`を省略するとモデル全体だけを集計します。現在、実データから生成できるdimensionはDATE型です。
+
+### 2. Madakoを設定する
+
+dbt projectのルートに`madako.toml`を作ります。
 
 ```toml
 [project]
@@ -42,7 +63,7 @@ dbt_project_dir = "."
 storage_dir = ".madako"
 
 [bigquery]
-project = "my-billing-project"
+project = "your-gcp-project"
 location = "asia-northeast1"
 
 [server]
@@ -50,122 +71,106 @@ host = "127.0.0.1"
 port = 8000
 ```
 
-相対pathは`madako.toml`があるdirectoryを基準に解決します。現在のdirectoryから親へ向かって最初の`madako.toml`を自動検出するため、project配下のsubdirectoryからも実行できます。CLI optionを指定した場合は設定ファイルより優先されます。別の設定を使う場合は`madako --config <file> <command>`と指定します。
+相対パスは`madako.toml`の場所を基準にします。Madakoは現在のディレクトリから親へ向かって設定ファイルを探すため、project内のどこからでも実行できます。
 
-profile storageをGitで管理しない場合は、上の例なら`.madako/`をdbt projectの`.gitignore`に追加してください。
+生成されるstorageをGitで管理しない場合は、`.madako/`を`.gitignore`へ追加してください。
+
+### 3. profileして開く
+
+dbt artifactを生成してからMadakoを実行します。
 
 ```bash
+dbt docs generate
 madako profile
 madako serve
 ```
 
-`madako profile`は実行前に設定されたdbt projectのartifactをstorageへ自動importします。BigQueryへ接続せずmetadataだけを更新したい場合は`madako import-dbt`を使います。`madako plan`は保存済みstorageを対象にするため、必要に応じて先に`madako import-dbt`を実行してください。
+`madako profile`は、`manifest.json`と`catalog.json`をstorageへ取り込んでからBigQueryをprofileします。dbtコマンド自体はMadakoから実行しません。
 
-設定ファイルを使わない場合や一時的に値を変える場合は、従来どおり`--project-dir`、`--output-dir`、`--storage-dir`、`--project`、`--location`、`--host`、`--port`を指定できます。
+BigQueryの処理には、インストール・認証済みの`bq` CLIが必要です。
 
-BigQueryのplan / profileにはインストール・認証済みの`bq` CLIが必要です。設定と`--project`の両方を省略した場合はrelationのdatabase、locationを省略した場合は`asia-northeast1`を使います。
+## 主なコマンド
 
-`--select`省略時はenabledな全relationを対象にします。指定できるのは完全一致の`unique_id`または一意な名前です。同名relationがある場合は`unique_id`を使ってください。dbt selection syntaxには未対応です。
+| コマンド | 用途 |
+| --- | --- |
+| `madako profile` | dbt artifactを取り込み、対象データをprofileする |
+| `madako serve` | 保存済みのカタログをブラウザで開く |
+| `madako import-dbt` | BigQueryへ接続せず、dbt metadataだけを更新する |
+| `madako plan --show-sql` | 保存済みmetadataから見積もりとSQLを確認する |
+| `madako build-sample` | 動作確認用の合成storageを作る |
 
-設定はdbt resourceの`config.meta.profiling`で宣言します。
+一時的に設定を変える場合は各コマンドのオプションを利用できます。別の設定ファイルは`madako --config path/to/madako.toml <command>`で指定します。
 
-```yaml
-config:
-  meta:
-    profiling:
-      enabled: true
-      dimensions: [event_date]
-      max_bytes_billed: 1000000000
-      treat_empty_string_as_null: true
+```bash
+madako --help
+madako profile --help
 ```
 
-| 設定                       | 既定値     | 意味                                            |
-| -------------------------- | ---------- | ----------------------------------------------- |
-| enabled                    | false      | profiling対象に含める                           |
-| dimensions                 | []         | 空ならOverallのみ。現在のquery生成はDATEのみ    |
-| max_bytes_billed           | 1000000000 | 正の整数bytes、queryごとの上限                  |
-| treat_empty_string_as_null | false      | STRINGの`''`をMissingへ算入し、Distinctから除外 |
+## 安全性
 
-空白だけの文字列は空文字に含めません。NULLと空文字の件数は別々に保存します。設定・カラム・relationなどが変わった状態で再importした場合、以前のprofileはクリアされるため再実行してください。
+- 実行前に対象クエリをすべてdry runします。
+- `max_bytes_billed`を超えるクエリがあれば、実データへのクエリを開始しません。
+- 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。
+- UIの操作だけでBigQueryへのクエリが発行されることはありません。
+
+対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。
 
 OverallとDATE dimensionを生成できます。categorical dimensionは保存済みデータの表示のみ対応しています。DATEのNULL bucketは日付比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
+## 現在の制約
 
-対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。NUMERIC / BIGNUMERICのMin / Maxは精度を失わない10進文字列としてAPIとParquetへ保存します。
+- BigQuery以外のwarehouseにはまだ対応していません。
+- dbt selection syntaxには未対応です。`--select`にはモデル名または`unique_id`を指定します。
+- categorical dimensionは表示のみ対応し、profiling queryはまだ生成できません。
+- storageはローカル利用向けです。同時更新や更新中の読み取りは保証していません。
+
+Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更される可能性があります。
 
 ## Python API
+
+CLIと同じ処理はPythonからも利用できます。
 
 ```python
 from data_profile import DataProfile
 
-app = DataProfile.from_dbt_project(
+catalog = DataProfile.from_dbt_project(
     project_dir="path/to/dbt-project",
-    storage_dir=".data-profile",
+    storage_dir=".madako",
 )
-plan = app.plan(select="model.my_project.events", location="asia-northeast1")
-for item in plan.items:
-    print(item.model.unique_id, item.estimated_bytes, item.executable)
+plan = catalog.plan(select="events")
+result = catalog.run(plan)
 
-result = app.run(plan)
-for outcome in result.items:
-    print(outcome.item.model.unique_id, outcome.item.dimension,
-          outcome.status, outcome.row_count, outcome.error)
-print(result.successful, result.storage_updated)
+print(result.successful)
 ```
 
-既存storageを使う場合は`DataProfile.from_storage(path)`、planとrunをまとめる場合は`app.profile(select=...)`を使用します。plan後に対象のschema・設定が変わった場合やplan内のmodelを書き換えた場合は、再planが必要です。
+Warehouseやstorageは独自実装へ差し替えられます。詳細な契約は[開発状況](docs/development-status.md)と[Storage Schema](docs/profile-storage-schema.md)を参照してください。
 
-- 全対象をdry runしてから実queryを開始します。いずれかが上限超過なら全項目をskipします。上限はqueryごとであり、実行全体の予算ではありません。
-- query・変換失敗ではfail-fastとなり、今回の結果は保存しません。
-- カラム不足・重複、件数・率の不整合を拒否します。取得上限100,000 metric rowsに到達した場合も保存を拒否します。
-- `succeeded`はqueryと変換の成功、`row_count`は取得したmetric rows数です。
-- `storage_updated`は保存完了を示します。`profiled_models`は保存できたmodelの表示名です。同名relationの識別には`items[].item.model.unique_id`を使います。
-- 設定・dry-run・古いplan・保存のエラーは公開例外で通知します。query／変換の失敗は`ProfileResult`に格納します。
-- CLIのprofileは実行失敗・skip時に終了コード1を返します。
+## 開発
 
-`adapter=`には`WarehouseAdapter`を実装するオブジェクトを指定できます。完全なadapterは`supported_types`、`build_profile_query()`、`estimate()`、`execute()`、`parse_profile_rows()`を持ち、SQL生成から結果変換までを所有します。既定の`BigQueryAdapter`はBigQuery SQLと`bq` CLIを使用します。
+```bash
+git clone https://github.com/kohei0128/madako.git
+cd madako
+uv sync
+uv run pytest
+uv build
+```
 
-0.1の互換性のため、`estimate()` / `execute()`だけを持つ既存adapterも利用できます。この場合、SQL生成・結果変換は`BigQueryAdapter`で補完されます。`estimator=` / `runner=`は対応する実行関数だけを上書きし、生成・変換には選択したadapterを使います。
-
-公開例外の基底は`DataProfileError`です。用途別に`ArtifactError`、`PlanningError`、`WarehouseError`、`ResultValidationError`、`StorageError`を公開しています。従来の`ProfilingError`はplanning・warehouse・result validationをまとめて捕捉する互換用の基底です。保存実装の予期しない失敗は`StorageOperationError`へ包み、元の例外を`__cause__`に保持します。
-
-`storage=`には`ProfileStorage`の`paths / exists / load / save`を実装するオブジェクトを指定できます。既定は`ParquetProfileStorage`で、独自storageは取込・plan・保存とWeb serverで共用されます。現在の契約はローカル2ファイルのパスを含みます。
-
-## 保存と復旧
-
-Parquet schema v1は`unique_id`でrelationを識別します。旧形式は名前が一意な場合に読み込め、次回保存でv1になります。同名relationを含む旧形式は新directoryへ再import・再profileしてください。既存storageを消す必要はありません。
-
-書き込みはstage生成・読み戻し検証後に2ファイルを順番に置換します。置換失敗時は復元し、復元にも失敗した場合は`StorageRecoveryError.recovery_dir`にbackupを残します。詳細は[復旧手順](docs/profile-storage-schema.md#復旧手順)を参照してください。
-
-同時更新・更新中の読み取り・強制終了に対するtransaction保証はありません。書き込みを直列化し、更新完了後に読み込んでください。
-
-## Test
+Web UIを変更するときだけNode.jsが必要です。
 
 ```bash
 cd web
 npm ci
 npm run build
-npx playwright install --with-deps chromium
 npm run test:e2e
-cd ..
-uv run pytest
-uv build
 ```
 
-unit testは合成artifactと一時directoryを使い、実BigQueryや個人用dbt projectに依存しません。Web buildは`src/data_profile/web_dist`へ出力され、wheelに同梱されます。PlaywrightはVite development serverを使わず`madako serve`へ接続し、同名relationの選択、Refresh、DATEのNULL bucket表示を検証します。
+## ドキュメント
 
-`.github/workflows/madako.yml`はPython 3.12 / 3.13のunit test、Web build、Playwright、package buildを実行します。package smokeではcore wheelだけでのimport・sample生成・読み取り、Web extra追加後の同梱UI読み込みに加えて、`e2e/minimal_dbt_project`を作業directory外へコピーして公開APIから実行します。
+- [プロダクト要件](docs/product-requirements.md)
+- [開発状況](docs/development-status.md)
+- [Roadmap](docs/roadmap.md)
+- [Storage Schema・復旧手順](docs/profile-storage-schema.md)
+- [Config Versioning](docs/config-versioning.md)
 
-Phase 2のBigQuery E2Eを再実行する場合は、一意な検証用dataset名を指定します。スクリプトはdatasetと検証tableを作成し、完了時にdatasetを削除します。tableには24時間の既定有効期限も設定します。
+## License
 
-```bash
-uv run python examples/verify_phase2_bigquery.py \
-  --project <billing-project> \
-  --dataset data_profile_phase2_<unique-name> \
-  --location asia-northeast1
-```
-
-## HTTP API
-
-- `GET /api/health`: processの応答確認。storageの健全性確認ではありません。
-- `GET /api/models`: profileを含む全relation。`?include_profiles=false`でmetadataだけ取得。
-- `GET /api/models/{identifier}/profile`: `unique_id`または一意な名前で取得。未検出は404、曖昧な名前は409。
+[MIT License](LICENSE)
