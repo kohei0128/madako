@@ -127,8 +127,8 @@ code { color: #21684e; background: #edf6f2; padding: 2px 5px; border-radius: 3px
 .lineage-heading h2 { margin: 0; color: #20302b; font-size: 17px; }
 .lineage-heading span, .lineage-heading > small { color: #7a8883; font-size: 9px; }
 .lineage-flow { display: grid; grid-template-columns: minmax(160px, 1fr) 26px minmax(180px, 1.15fr) 26px minmax(160px, 1fr); align-items: center; gap: 8px; min-height: 142px; padding: 16px; background: #edf2f0; border: 1px solid #d7dfdc; overflow-x: auto; }
-.lineage-column { align-self: stretch; min-width: 160px; }
-.lineage-column.focus { min-width: 180px; align-self: stretch; }
+.lineage-column { align-self: center; min-width: 160px; }
+.lineage-column.focus { min-width: 180px; }
 .lineage-column h3 { margin: 0 0 7px; color: #75837e; font-size: 8px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
 .lineage-nodes { display: grid; gap: 6px; }
 .lineage-card { display: block; width: 100%; min-width: 0; padding: 10px 11px; color: #263630; background: #fff; border: 1px solid #ccd8d3; border-radius: 5px; text-align: left; box-shadow: 0 2px 6px rgba(22, 46, 38, .035); }

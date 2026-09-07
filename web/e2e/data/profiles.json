@@ -8,7 +8,7 @@
     "relation_name": "demo.analytics.events",
     "description": "Profiled model",
     "materialization": "table",
-    "upstream_ids": ["source.phase4.events"],
+    "upstream_ids": ["source.phase4.events", "source.phase4.users", "source.phase4.devices"],
     "columns": [
       {"name": "event_date", "data_type": "DATE", "description": "Event date"},
       {"name": "amount", "data_type": "NUMERIC", "description": "Exact amount"}
@@ -56,6 +56,30 @@
     "columns": [
       {"name": "event_date", "data_type": "DATE", "description": "Event date"}
     ],
+    "profiles": []
+  },
+  {
+    "unique_id": "source.phase4.users",
+    "resource_type": "source",
+    "name": "users",
+    "database": "demo",
+    "schema_name": "analytics",
+    "relation_name": "demo.analytics.raw_users",
+    "description": "Additional direct upstream source",
+    "materialization": "source",
+    "columns": [],
+    "profiles": []
+  },
+  {
+    "unique_id": "source.phase4.devices",
+    "resource_type": "source",
+    "name": "devices",
+    "database": "demo",
+    "schema_name": "analytics",
+    "relation_name": "demo.analytics.raw_devices",
+    "description": "Additional direct upstream source",
+    "materialization": "source",
+    "columns": [],
     "profiles": []
   },
   {
