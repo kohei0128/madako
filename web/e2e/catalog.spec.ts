@@ -47,6 +47,7 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
   await expect(upstream).toBeVisible();
   await expect(downstream).toBeVisible();
   await expect(selected.locator(".lineage-kind")).toHaveText("model");
+  await expect(selected.locator("small")).toHaveText("demo / analytics");
   const [upstreamBox, selectedBox, downstreamBox] = await Promise.all([
     upstream.boundingBox(), selected.boundingBox(), downstream.boundingBox(),
   ]);
