@@ -231,11 +231,9 @@ function LineagePanel({ model, models, onSelect }: {
     .filter((item) => item.upstream_ids.includes(model.unique_id))
     .map((relation) => ({ id: relation.unique_id, relation }));
 
-  const group = (items: { id: string; relation?: ModelProfile }[], emptyLabel: string) => (
+  const group = (items: { id: string; relation?: ModelProfile }[]) => (
     <div className="lineage-nodes">
-      {items.length > 0
-        ? items.map((item) => <LineageCard key={item.id} {...item} onSelect={onSelect} />)
-        : <div className="lineage-empty">{emptyLabel}</div>}
+      {items.map((item) => <LineageCard key={item.id} {...item} onSelect={onSelect} />)}
     </div>
   );
 
@@ -245,11 +243,11 @@ function LineagePanel({ model, models, onSelect }: {
       <small>{upstream.length} upstream · {downstream.length} downstream</small>
     </div>
     <div className="lineage-flow">
-      <div className="lineage-column"><h3>Upstream</h3>{group(upstream, "No upstream relations")}</div>
-      <div className="lineage-arrow" aria-hidden="true">→</div>
+      <div className="lineage-column upstream">{upstream.length > 0 && <><h3>Upstream</h3>{group(upstream)}</>}</div>
+      <div className="lineage-arrow incoming" aria-hidden="true">{upstream.length > 0 ? "→" : ""}</div>
       <div className="lineage-column focus"><h3>Selected</h3><LineageCard id={model.unique_id} relation={model} current onSelect={onSelect} /></div>
-      <div className="lineage-arrow" aria-hidden="true">→</div>
-      <div className="lineage-column"><h3>Downstream</h3>{group(downstream, "No downstream relations")}</div>
+      <div className="lineage-arrow outgoing" aria-hidden="true">{downstream.length > 0 ? "→" : ""}</div>
+      <div className="lineage-column downstream">{downstream.length > 0 && <><h3>Downstream</h3>{group(downstream)}</>}</div>
     </div>
   </section>;
 }

@@ -61,3 +61,21 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
   await expect(page.getByLabel("Direct lineage").locator(".lineage-card.current .lineage-kind")).toHaveText("source");
   await expect(page.getByLabel("Direct lineage").getByRole("button", { name: "Open model events" })).toBeVisible();
 });
+
+test("omits empty lineage directions and their arrows", async ({ page }) => {
+  const lineage = page.getByLabel("Direct lineage");
+
+  await lineage.getByRole("button", { name: "Open model event_summary" }).click();
+
+  await expect(page.locator(".title-row h1")).toHaveText("event_summary");
+  await expect(lineage.locator(".lineage-column.downstream")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.outgoing")).toBeEmpty();
+  await expect(lineage.getByText("No downstream relations")).toHaveCount(0);
+
+  await page.locator(".explorer").getByRole("button", { name: /source events$/ }).click();
+
+  await expect(page.locator(".title-row h1")).toHaveText("events");
+  await expect(lineage.locator(".lineage-column.upstream")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.incoming")).toBeEmpty();
+  await expect(lineage.getByText("No upstream relations")).toHaveCount(0);
+});

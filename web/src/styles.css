@@ -141,7 +141,6 @@ button.lineage-card:disabled { color: #75827e; background: #f4f6f5; border-style
 .lineage-card small { color: #73817c; font-size: 8px; }
 .lineage-kind { color: #318061; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .lineage-arrow { color: #55a784; font-size: 19px; text-align: center; }
-.lineage-empty { display: flex; min-height: 65px; align-items: center; justify-content: center; padding: 10px; color: #8a9692; border: 1px dashed #cad4d0; border-radius: 5px; font-size: 9px; text-align: center; }
 .notice { margin: 60px auto; color: #5e6e68; }
 .notice.error { color: #a33b2f; }
 @media (max-width: 960px) { .shell { grid-template-columns: 220px minmax(0, 1fr); } .detail { padding: 24px 20px; } .metadata { gap: 12px; } }
