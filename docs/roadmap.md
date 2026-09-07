@@ -90,6 +90,7 @@ Phase 3は設計・実装・テストまで完了。0.xライブラリとして�
 - ✅ GitHub Actionsの初回実行成功を確認
 - ✅ 配布package名と正式CLIを`madako`へ統一し、Web UIをwheelへ同梱して`madako serve`だけでAPIとUIを配信
 - ✅ project-localな`madako.toml`からdbt project、storage、BigQuery、server設定を自動読込
+- ✅ dbt direct dependencyを保存し、詳細画面末尾に上流・下流1階層のlineageを表示
 
 ## 公開判定
 

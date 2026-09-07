@@ -19,12 +19,14 @@ def dbt_project(tmp_path: Path) -> Path:
         "name": "events", "alias": "events", "database": "project", "schema": "analytics",
         "columns": {"event_date": {"data_type": "DATE", "description": "Event date"},
                     "amount": {"data_type": "INTEGER"}},
+        "depends_on": {"nodes": ["source.demo.raw.events"]},
         "config": {"materialized": "view", "meta": {"profiling": {
             "enabled": True, "dimensions": ["event_date"], "max_bytes_billed": 1000,
         }}},
     }
     source = {**model, "unique_id": "source.demo.raw.events", "resource_type": "source",
               "identifier": "raw_events", "schema": "raw",
+              "depends_on": {"nodes": []},
               "config": {"meta": {"profiling": {"enabled": True, "treat_empty_string_as_null": True}}}}
     manifest = {
         "metadata": {"project_name": "demo", "generated_at": "2026-09-01T00:00:00Z"},
@@ -55,6 +57,7 @@ def test_reads_models_sources_and_catalog(dbt_project: Path) -> None:
     assert model.profiles == []
     assert [(column.name, column.data_type) for column in model.columns] == [("event_date", "DATE"), ("amount", "INT64")]
     assert model.tests == ["not_null"]
+    assert model.upstream_ids == ["source.demo.raw.events"]
     assert model.profiling.dimensions == ["event_date"]
     assert model.profiling.max_bytes_billed == 1000
     assert source.profiling.treat_empty_string_as_null
@@ -69,6 +72,7 @@ def test_artifact_storage_round_trip(dbt_project: Path, tmp_path: Path) -> None:
     assert len(repository.list_models()) == 2
     assert all(resource.profiles == [] for resource in repository.list_models())
     assert repository.get_model("model.demo.events").columns[1].data_type == "INT64"
+    assert repository.get_model("model.demo.events").upstream_ids == ["source.demo.raw.events"]
 
 
 def test_public_api_loads_dbt_project_and_builds_plan(dbt_project: Path, tmp_path: Path) -> None:

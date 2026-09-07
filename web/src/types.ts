@@ -33,6 +33,7 @@ export interface ModelProfile {
   materialization: string;
   tags: string[];
   tests: string[];
+  upstream_ids: string[];
   profiling: {
     enabled: boolean;
     dimensions: string[];

@@ -1,6 +1,6 @@
 # Madako 開発状況
 
-最終更新: 2026-09-06
+最終更新: 2026-09-08
 
 プロダクトの目的とMVP範囲は[要件定義](product-requirements.md)、開発順序と完了条件は[Roadmap](roadmap.md)、操作手順は[README](../README.md)、保存契約と復旧手順は[Storage Schema](profile-storage-schema.md)を参照する。この文書は現在の実装と残る制限を扱う。
 
@@ -18,14 +18,14 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 
 | 領域 | 実装済み | 残る制限 |
 |---|---|---|
-| dbt import | project内のmodels / sources / columns / tests、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
+| dbt import | project内のmodels / sources / columns / tests / direct dependencies、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
 | 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE dimension、型別metrics、NULL bucket | categoricalは保存・表示のみ。SQL生成はDATE dimensionだけ |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | TIMESTAMP、複合型などは除外 |
 | 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
-| Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh。同梱UIを`madako serve`でAPIと同一portから配信。Playwrightで同名relation、Refresh、NULL bucketを検証 | 対応ブラウザはCIで検証するChromiumのみ |
+| Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh、直接の上流・下流lineage。同梱UIを`madako serve`でAPIと同一portから配信 | 対応ブラウザはCIで検証するChromiumのみ |
 | テスト・サンプル | 合成データ、dbt artifact、実BigQuery用Phase 2 E2E、外部最小dbt project smoke。unit / package / browser CIを実行 | 実BigQuery E2Eは費用と認証を伴うため手動実行 |
 
 ## 実行と保存の保証
@@ -51,6 +51,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 - categoricalはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。
+- Lineageは詳細画面の末尾に上流・選択relation・下流を横並びで表示し、dbtのdirect dependencyだけを辿る。表示中のrelationへ画面内で移動できる。
 - UI操作からBigQuery queryは発行しない。
 
 ## 2026-09-05 レビュー後の修正
@@ -61,9 +62,9 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test 85件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
+Python unit test 87件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
 
-GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示の3ケースをChromiumで確認する。
+GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示、direct lineageの表示・移動をChromiumで確認する。
 
 ## 実環境の確認範囲
 

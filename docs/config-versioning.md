@@ -21,6 +21,7 @@ Madakoには3層のバージョニングがあります:
   - `unique_id` による明確なモデル識別
   - `profiling_json` によるconfig保存
   - optionalな`profile_version`による計算version保存
+  - optionalな`upstream_ids_json`によるdirect lineage保存
   - `empty_string_count`, `missing_count`, `missing_rate` による詳細な欠損値追跡
 
 ### バージョニングルール
@@ -123,6 +124,7 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
 - `profiled_at`: 実行タイムスタンプ
 - `tags`, `tests`: 計算に影響しないメタデータ
 - `description`: モデルの説明文
+- `upstream_ids`: 表示用lineage metadata
 
 ### 使用箇所
 

@@ -1,6 +1,6 @@
 # Profile Storage Schema
 
-最終更新: 2026-09-06
+最終更新: 2026-09-08
 
 現在のschema versionは**1**。両ファイルに`schema_version`列を持つ。
 
@@ -35,8 +35,9 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | profiling_json | VARCHAR | No | dbtで解決済みの`meta.profiling`設定 |
 | profiled_at | VARCHAR | Yes | profile実行日時のISO 8601文字列 |
 | profile_version | INTEGER | Yes | profile計算ロジックのversion。現在は2 |
+| upstream_ids_json | VARCHAR | No | dbtの直接依存先unique IDを格納したJSON array |
 
-`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。`profile_version`がない既存v1 storageはversion 1として読み取る。
+`profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。`profile_version`がない既存v1 storageはversion 1として読み取る。`upstream_ids_json`がない既存v1 storageは空配列として読み取り、次回importで補完する。
 
 ## column_profiles.parquet
 

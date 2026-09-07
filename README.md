@@ -115,6 +115,7 @@ madako profile --help
 
 対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。
 
+OverallとDATE dimensionを生成できます。categorical dimensionは保存済みデータの表示のみ対応しています。DATEのNULL bucketは日付比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
 ## 現在の制約
 
 - BigQuery以外のwarehouseにはまだ対応していません。

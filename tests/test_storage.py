@@ -143,6 +143,33 @@ def test_storage_without_profile_version_loads_as_version_one(tmp_path: Path) ->
     assert storage.load()[0].profile_version == 1
 
 
+def test_storage_without_lineage_loads_with_empty_upstream_ids(tmp_path: Path) -> None:
+    import duckdb
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([model("without lineage")])
+    models_path, _ = storage.paths
+    with duckdb.connect() as connection:
+        connection.execute(
+            "CREATE TABLE old_models AS SELECT * EXCLUDE(upstream_ids_json) FROM read_parquet(?)",
+            [str(models_path)],
+        )
+        connection.execute("COPY old_models TO ? (FORMAT PARQUET)", [str(models_path)])
+
+    assert storage.load()[0].upstream_ids == []
+
+
+def test_lineage_round_trip(tmp_path: Path) -> None:
+    storage = ParquetProfileStorage(tmp_path)
+    expected = model("with lineage").model_copy(
+        update={"upstream_ids": ["source.test.raw.events"]},
+    )
+
+    storage.save([expected])
+
+    assert storage.load()[0].upstream_ids == ["source.test.raw.events"]
+
+
 def test_legacy_storage_migrates_only_when_names_are_unambiguous(tmp_path: Path) -> None:
     import duckdb
     from data_profile.sample import sample_models
@@ -158,7 +185,10 @@ def test_legacy_storage_migrates_only_when_names_are_unambiguous(tmp_path: Path)
     assert legacy[0].profiles == sample_models()[0].profiles
     with duckdb.connect() as connection:
         connection.execute("CREATE TABLE models AS SELECT * FROM read_parquet(?)", [str(models_path)])
-        connection.execute("INSERT INTO models SELECT * REPLACE ('source.demo.raw.events' AS unique_id) FROM models")
+        connection.execute(
+            "INSERT INTO models SELECT * REPLACE ('source.demo.duplicate.events' AS unique_id) "
+            "FROM models WHERE model_name = 'events'"
+        )
         connection.execute("COPY models TO ? (FORMAT PARQUET)", [str(models_path)])
     with pytest.raises(ValueError, match="ambiguous model names"):
         storage.load()
