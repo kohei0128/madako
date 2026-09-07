@@ -298,6 +298,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
             model.profiling.model_dump_json(),
             model.profiled_at.isoformat() if model.profiled_at else None,
             model.profile_version,
+            json.dumps(model.upstream_ids),
         ))
         for profile_order, profile in enumerate(model.profiles):
             for column_order, column in enumerate(profile.columns):
@@ -340,11 +341,12 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                 columns_json VARCHAR NOT NULL,
                 profiling_json VARCHAR NOT NULL,
                 profiled_at VARCHAR,
-                profile_version INTEGER
+                profile_version INTEGER,
+                upstream_ids_json VARCHAR NOT NULL
             )
         """)
         if model_rows:
-            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
+            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
         connection.execute("""
             CREATE TABLE column_profiles (
                 schema_version INTEGER NOT NULL,

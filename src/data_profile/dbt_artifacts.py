@@ -57,6 +57,11 @@ def _to_model(node: dict, catalog_node: dict | None, tests_by_node: dict[str, li
     relation_name = f"`{database}.{schema}.{identifier}`" if database and schema else identifier
     config = node.get("config", {})
     profiling = config.get("meta", {}).get("profiling", {})
+    upstream_ids = list(dict.fromkeys(
+        dependency
+        for dependency in node.get("depends_on", {}).get("nodes", [])
+        if dependency.startswith(("model.", "source."))
+    ))
     return ModelProfile(
         unique_id=node["unique_id"],
         resource_type=resource_type,
@@ -68,6 +73,7 @@ def _to_model(node: dict, catalog_node: dict | None, tests_by_node: dict[str, li
         materialization=config.get("materialized", "source") if resource_type == "model" else "source",
         tags=config.get("tags", node.get("tags", [])),
         tests=tests_by_node.get(node["unique_id"], []),
+        upstream_ids=upstream_ids,
         columns=columns,
         profiling=profiling,
         profiles=[],

@@ -85,6 +85,7 @@ class ModelProfile(BaseModel):
     materialization: str
     tags: list[str] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
+    upstream_ids: list[str] = Field(default_factory=list)
     columns: list[ColumnMetadata] = Field(default_factory=list)
     profiling: ProfilingConfig = Field(default_factory=ProfilingConfig)
     profiled_at: datetime | None = None

@@ -82,11 +82,12 @@ class DuckDBProfileRepository:
                 raise StorageFormatError("profile storage is missing unique_id")
             profiling = "profiling_json" if "profiling_json" in model_columns else "'{}'"
             profile_version = "profile_version" if "profile_version" in model_columns else "1"
+            upstream_ids = "upstream_ids_json" if "upstream_ids_json" in model_columns else "'[]'"
             rows = connection.execute(
                 f"""
                 SELECT unique_id, resource_type, model_name, database_name, schema_name,
                        relation_name, description, materialization, tags_json, tests_json,
-                       columns_json, {profiling}, profiled_at, {profile_version}
+                       columns_json, {profiling}, profiled_at, {profile_version}, {upstream_ids}
                 FROM read_parquet(?) ORDER BY model_name, unique_id
                 """, [str(self.models_path)],
             ).fetchall()
@@ -179,6 +180,7 @@ class DuckDBProfileRepository:
             materialization=row[7],
             tags=json.loads(row[8]),
             tests=json.loads(row[9]),
+            upstream_ids=json.loads(row[14]),
             columns=[ColumnMetadata.model_validate(column) for column in json.loads(row[10])],
             profiling=json.loads(row[11]),
             profiled_at=row[12],

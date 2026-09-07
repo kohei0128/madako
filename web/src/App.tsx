@@ -196,6 +196,64 @@ function CategoricalTable({ profiles, filter, dimensionName, includeEmpty }: { p
   </table></div>;
 }
 
+function LineageCard({ id, relation, current = false, onSelect }: {
+  id: string;
+  relation?: ModelProfile;
+  current?: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const name = relation?.name ?? id.split(".").at(-1) ?? id;
+  const context = relation
+    ? `${relation.resource_type} · ${relation.database} / ${relation.schema}`
+    : id;
+  const content = <>
+    <span className="lineage-kind">{current ? "Current" : relation?.resource_type ?? "Unavailable"}</span>
+    <strong>{name}</strong>
+    <small>{context}</small>
+  </>;
+  if (current) return <div className="lineage-card current">{content}</div>;
+  return <button
+    className="lineage-card"
+    disabled={!relation}
+    onClick={() => relation && onSelect(relation.unique_id)}
+    aria-label={relation ? `Open ${relation.resource_type} ${relation.name}` : undefined}
+  >{content}</button>;
+}
+
+function LineagePanel({ model, models, onSelect }: {
+  model: ModelProfile;
+  models: ModelProfile[];
+  onSelect: (id: string) => void;
+}) {
+  const byId = new Map(models.map((item) => [item.unique_id, item]));
+  const upstream = model.upstream_ids.map((id) => ({ id, relation: byId.get(id) }));
+  const downstream = models
+    .filter((item) => item.upstream_ids.includes(model.unique_id))
+    .map((relation) => ({ id: relation.unique_id, relation }));
+
+  const group = (items: { id: string; relation?: ModelProfile }[], emptyLabel: string) => (
+    <div className="lineage-nodes">
+      {items.length > 0
+        ? items.map((item) => <LineageCard key={item.id} {...item} onSelect={onSelect} />)
+        : <div className="lineage-empty">{emptyLabel}</div>}
+    </div>
+  );
+
+  return <section className="lineage-section" aria-label="Direct lineage">
+    <div className="lineage-heading">
+      <div><h2>Lineage</h2><span>Direct relationships only</span></div>
+      <small>{upstream.length} upstream · {downstream.length} downstream</small>
+    </div>
+    <div className="lineage-flow">
+      <div className="lineage-column"><h3>Upstream</h3>{group(upstream, "No upstream relations")}</div>
+      <div className="lineage-arrow" aria-hidden="true">→</div>
+      <div className="lineage-column focus"><h3>Selected</h3><LineageCard id={model.unique_id} relation={model} current onSelect={onSelect} /></div>
+      <div className="lineage-arrow" aria-hidden="true">→</div>
+      <div className="lineage-column"><h3>Downstream</h3>{group(downstream, "No downstream relations")}</div>
+    </div>
+  </section>;
+}
+
 function App() {
   const [models, setModels] = useState<ModelProfile[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
@@ -287,6 +345,16 @@ function App() {
     });
   }
 
+  function selectModel(id: string) {
+    const selected = models.find((item) => item.unique_id === id);
+    setSelectedModel(id);
+    setSliceIndex(0);
+    setTypeFilter("all");
+    if (selected) {
+      setExpandedDatasets((current) => new Set(current).add(`${selected.database}/${selected.schema}`));
+    }
+  }
+
   function renderHeaders() {
     const missingLabel = includeEmpty ? "MISSING" : "NULL";
     if (typeFilter === "string") return <tr><th>Column</th><th>{missingLabel}</th><th>Distinct</th></tr>;
@@ -319,7 +387,7 @@ function App() {
             <button className={`dataset-item ${isOpen ? "open" : ""}`} onClick={() => toggleDataset(datasetKey)} aria-expanded={isOpen}>
               <span className="chevron">›</span><span className="dataset-icon">▤</span><span>{schema}</span><small>{relations.length}</small>
             </button>
-            {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.unique_id === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => { setSelectedModel(item.unique_id); setSliceIndex(0); setTypeFilter("all"); }}>
+            {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.unique_id === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => selectModel(item.unique_id)}>
               <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.resource_type}</small>{item.name}</span>
             </button>)}</div>}
           </div>;
@@ -383,6 +451,7 @@ function App() {
         </>}
         {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} includeEmpty={includeEmpty} />}
       </>}
+      {model && <LineagePanel model={model} models={models} onSelect={selectModel} />}
     </section>
   </main>;
 }
