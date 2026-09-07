@@ -49,15 +49,17 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
   await expect(downstream).toBeVisible();
   await expect(selected.locator(".lineage-kind")).toHaveText("model");
   await expect(selected.locator("small")).toHaveText("demo / analytics");
-  const [firstUpstreamBox, lastUpstreamBox, selectedBox, downstreamBox] = await Promise.all([
-    upstreamCards.first().boundingBox(), upstreamCards.last().boundingBox(),
-    selected.boundingBox(), downstream.boundingBox(),
+  const incomingArrow = lineage.locator(".lineage-arrow.incoming");
+  const outgoingArrow = lineage.locator(".lineage-arrow.outgoing");
+  const [firstUpstreamBox, selectedBox, downstreamBox, incomingArrowBox, outgoingArrowBox] = await Promise.all([
+    upstreamCards.first().boundingBox(), selected.boundingBox(), downstream.boundingBox(),
+    incomingArrow.boundingBox(), outgoingArrow.boundingBox(),
   ]);
-  const upstreamCenter = (firstUpstreamBox!.y + lastUpstreamBox!.y + lastUpstreamBox!.height) / 2;
   const selectedCenter = selectedBox!.y + selectedBox!.height / 2;
-  const downstreamCenter = downstreamBox!.y + downstreamBox!.height / 2;
-  expect(Math.abs(upstreamCenter - selectedCenter)).toBeLessThanOrEqual(1);
-  expect(Math.abs(downstreamCenter - selectedCenter)).toBeLessThanOrEqual(1);
+  expect(Math.abs(firstUpstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(downstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(incomingArrowBox!.y + incomingArrowBox!.height / 2 - selectedCenter)).toBeLessThanOrEqual(1);
+  expect(Math.abs(outgoingArrowBox!.y + outgoingArrowBox!.height / 2 - selectedCenter)).toBeLessThanOrEqual(1);
 
   await upstream.click();
 
@@ -74,13 +76,13 @@ test("omits empty lineage directions and their arrows", async ({ page }) => {
 
   await expect(page.locator(".title-row h1")).toHaveText("event_summary");
   await expect(lineage.locator(".lineage-column.downstream")).toBeEmpty();
-  await expect(lineage.locator(".lineage-arrow.outgoing")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.outgoing")).toHaveCount(0);
   await expect(lineage.getByText("No downstream relations")).toHaveCount(0);
 
   await page.locator(".explorer").getByRole("button", { name: /source events$/ }).click();
 
   await expect(page.locator(".title-row h1")).toHaveText("events");
   await expect(lineage.locator(".lineage-column.upstream")).toBeEmpty();
-  await expect(lineage.locator(".lineage-arrow.incoming")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.incoming")).toHaveCount(0);
   await expect(lineage.getByText("No upstream relations")).toHaveCount(0);
 });
