@@ -32,10 +32,40 @@ test("refreshes metadata and keeps the selected relation", async ({ page }) => {
   await expect(source).toHaveClass(/selected/);
 });
 
-test("shows the null date partition separately", async ({ page }) => {
+test("shows date dimension values in descending order with null last", async ({ page }) => {
   await page.getByRole("button", { name: "event_date" }).click();
-  await expect(page.getByText("NULL partition · 2 rows")).toBeVisible();
+  await expect(page.locator(".dimension-meta")).toHaveText("3 values");
   await expect(page.getByText("Latest partition").locator("..")).toContainText("2026-09-01");
+
+  const dateColumn = page.locator(".dimension-column").filter({ hasText: "event_date" });
+  await expect(dateColumn.locator(".dimension-detail-row > span:first-child"))
+    .toHaveText(["2026-09-01", "2026-08-31", "NULL"]);
+});
+
+test("expands dimension details from the whole column row", async ({ page }) => {
+  await page.getByRole("button", { name: "event_date" }).click();
+  await page.getByRole("button", { name: "String" }).click();
+
+  const category = page.locator(".dimension-column").filter({ hasText: "category" });
+  const row = category.locator(".dimension-column-row");
+  await expect(row).toHaveAttribute("aria-expanded", "true");
+  await expect(category.locator(".dimension-detail-header")).toContainText("Distinct");
+
+  await row.click({ position: { x: 20, y: 20 } });
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await expect(category.locator(".dimension-detail-grid")).toHaveCount(0);
+});
+
+test("shows min and max instead of distinct for float dimension details", async ({ page }) => {
+  await page.getByRole("button", { name: "event_date" }).click();
+  await page.getByRole("button", { name: "Numeric" }).click();
+
+  const score = page.locator(".dimension-column").filter({ hasText: "score" });
+  await score.locator(".dimension-column-row").click();
+  const header = score.locator(".dimension-detail-header");
+  await expect(header).toContainText("Min");
+  await expect(header).toContainText("Max");
+  await expect(header).not.toContainText("Distinct");
 });
 
 test("shows distinct count and ratio for string columns", async ({ page }) => {

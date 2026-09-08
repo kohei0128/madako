@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from "react";
 import type { ColumnProfile, ModelProfile, ProfileSlice } from "./types";
 
 type TypeFilter = "all" | "string" | "numeric" | "boolean" | "date";
-type TrendRange = 30 | 90 | "all";
 const typeFilters: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "All" }, { value: "string", label: "String" },
   { value: "numeric", label: "Numeric" }, { value: "boolean", label: "Boolean" },
@@ -110,47 +109,7 @@ function heatIntensity(rate: number): number {
   return Math.min(1, 0.18 + Math.sqrt(rate) * 1.4);
 }
 
-function HeatLegend({ label }: { label: string }) {
-  return <div className="heat-heading"><span>{label}</span><span className="heat-legend"><small>Low</small><i /><i /><i /><i /><small>High</small></span></div>;
-}
-
-function TemporalTable({ profiles, filter, range, includeEmpty }: { profiles: ProfileSlice[]; filter: TypeFilter; range: TrendRange; includeEmpty: boolean }) {
-  const ordered = [...profiles].sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? ""));
-  const visibleProfiles = range === "all" ? ordered : ordered.slice(-range);
-  const latest = visibleProfiles.at(-1);
-  const previous = visibleProfiles.at(-2);
-  if (!latest) return null;
-  const columns = latest.columns.filter((column) => matchesType(column, filter));
-
-  return <div className="table-wrap trend-table"><table>
-    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`${includeEmpty ? "MISSING" : "NULL"} rate by date`} /></th><th>Latest</th><th>Latest metrics</th></tr></thead>
-    <tbody>{columns.map((column) => {
-      const previousColumn = previous?.columns.find((item) => item.name === column.name);
-      return <tr key={column.name}>
-        <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>
-        <td><code>{column.data_type}</code></td>
-        <td><div
-          className="heatmap"
-          aria-label={`NULL rate trend for ${column.name}`}
-          style={{ "--point-count": visibleProfiles.length } as React.CSSProperties}
-        >
-          {visibleProfiles.map((profile) => {
-            const point = profile.columns.find((item) => item.name === column.name);
-            const metric = point ? missingMetric(point, includeEmpty) : { rate: 0, count: 0 };
-            const rate = metric.rate;
-            return <span key={profile.dimension_value} className={point ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
-              style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-              title={`${profile.dimension_value ?? "NULL"}: ${point ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(point, includeEmpty)}` : "No data"}`} />;
-          })}
-        </div><small className="trend-dates"><span>{visibleProfiles[0]?.dimension_value}</span><span>{latest.dimension_value}</span></small></td>
-        <td className="latest-value">{(missingMetric(column, includeEmpty).rate * 100).toFixed(1)}%<small title={missingDetail(column, includeEmpty)}>{missingMetric(column, includeEmpty).count.toLocaleString()} {includeEmpty ? "missing" : "nulls"}</small><small>{previousColumn ? `prev. ${(missingMetric(previousColumn, includeEmpty).rate * 100).toFixed(1)}%` : ""}</small></td>
-        <td><CompactMetrics column={column} slice={latest} /></td>
-      </tr>;
-    })}</tbody>
-  </table></div>;
-}
-
-function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSlice[]; columnName: string }) {
+function DimensionMetricSummary({ profiles, columnName, dimensionName }: { profiles: ProfileSlice[]; columnName: string; dimensionName: string }) {
   const points = profiles.flatMap((profile) => {
     const column = profile.columns.find((item) => item.name === columnName);
     return column ? [{ column, profile }] : [];
@@ -159,11 +118,12 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
   if (!first) return <>—</>;
   if (first.data_type === "STRING") {
     const values = points.flatMap(({ column }) => column.distinct_count === null ? [] : [column.distinct_count]);
-    return <PairMetric leftLabel="Min distinct" leftValue={values.length ? Math.min(...values).toLocaleString() : "—"} rightLabel="Max distinct" rightValue={values.length ? Math.max(...values).toLocaleString() : "—"} />;
+    const range = values.length ? `${Math.min(...values).toLocaleString()}–${Math.max(...values).toLocaleString()}` : "—";
+    return <div className="dimension-summary"><strong>Distinct {range}</strong><small>{profiles.length.toLocaleString()} {dimensionName} values</small></div>;
   }
   if (first.data_type === "BOOL") {
     const rates = points.map(({ column, profile }) => profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0);
-    return <PairMetric leftLabel="Min true" leftValue={`${Math.min(...rates).toFixed(1)}%`} rightLabel="Max true" rightValue={`${Math.max(...rates).toFixed(1)}%`} />;
+    return <div className="dimension-summary"><strong>True {Math.min(...rates).toFixed(1)}–{Math.max(...rates).toFixed(1)}%</strong><small>{profiles.length.toLocaleString()} {dimensionName} values</small></div>;
   }
   const minimums = points.flatMap(({ column }) => column.min_value === null ? [] : [column.min_value]);
   const maximums = points.flatMap(({ column }) => column.max_value === null ? [] : [column.max_value]);
@@ -176,29 +136,107 @@ function DimensionMetricSummary({ profiles, columnName }: { profiles: ProfileSli
     : first.data_type === "DATE" ? maximums.map(String).sort().at(-1)
     : exactDecimal ? maximums.map(String).sort(compareDecimalStrings).at(-1)
     : Math.max(...maximums.map(Number));
-  return <PairMetric leftLabel="Min" leftValue={String(min ?? "—")} rightLabel="Max" rightValue={String(max ?? "—")} />;
+  return <div className="dimension-summary"><strong>{String(min ?? "—")} → {String(max ?? "—")}</strong><small>Min / Max</small></div>;
 }
 
-function CategoricalTable({ profiles, filter, dimensionName, includeEmpty }: { profiles: ProfileSlice[]; filter: TypeFilter; dimensionName: string; includeEmpty: boolean }) {
-  const columns = profiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
-  return <div className="table-wrap dimension-table"><table>
-    <thead><tr><th>Column</th><th>Type</th><th><HeatLegend label={`${includeEmpty ? "MISSING" : "NULL"} rate by ${dimensionName}`} /></th><th>Metrics across values</th></tr></thead>
-    <tbody>{columns.map((baseColumn) => <tr key={baseColumn.name}>
-      <td className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></td>
-      <td><code>{baseColumn.data_type}</code></td>
-      <td><div
-        className="heatmap categorical-heatmap"
-        style={{ "--point-count": profiles.length } as React.CSSProperties}
-      >{profiles.map((profile) => {
-        const column = profile.columns.find((item) => item.name === baseColumn.name);
-        const rate = column ? missingMetric(column, includeEmpty).rate : 0;
-        return <span key={profile.dimension_value} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
-          style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
-          title={`${dimensionName} = ${profile.dimension_value ?? "NULL"}: ${column ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(column, includeEmpty)}` : "No data"}`} />;
-      })}</div><small className="dimension-count">{profiles.length} values · hover to inspect</small></td>
-      <td><DimensionMetricSummary profiles={profiles} columnName={baseColumn.name} /></td>
-    </tr>)}</tbody>
-  </table></div>;
+function dimensionMetricKind(column: ColumnProfile): "string" | "boolean" | "range" {
+  if (column.data_type === "STRING") return "string";
+  if (column.data_type === "BOOL") return "boolean";
+  return "range";
+}
+
+function DimensionDetail({ profiles, columnName, dimensionName, includeEmpty }: {
+  profiles: ProfileSlice[];
+  columnName: string;
+  dimensionName: string;
+  includeEmpty: boolean;
+}) {
+  const first = profiles.flatMap((profile) => profile.columns.filter((column) => column.name === columnName))[0];
+  if (!first) return null;
+  const kind = dimensionMetricKind(first);
+  const maxRows = Math.max(1, ...profiles.map((profile) => profile.record_count));
+  const missingLabel = includeEmpty ? "Missing" : "Null";
+
+  return <div className={`dimension-detail-grid ${kind}`}>
+    <div className="dimension-detail-title">{columnName} by {dimensionName}</div>
+    <div className="dimension-detail-header">
+      <span>{dimensionName}</span><span>Row count</span><span>Rows</span><span>{missingLabel}</span>
+      {kind === "string" && <span>Distinct</span>}
+      {kind === "boolean" && <span>True</span>}
+      {kind === "range" && <><span>Min</span><span>Max</span></>}
+    </div>
+    {profiles.map((profile, index) => {
+      const column = profile.columns.find((item) => item.name === columnName);
+      const metric = column ? missingMetric(column, includeEmpty) : { count: 0, rate: 0 };
+      const trueRate = column && profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0;
+      return <div className="dimension-detail-row" key={`${profile.dimension_value ?? "NULL"}-${index}`}>
+        <span className={profile.dimension_value === null ? "missing-value" : ""}>{profile.dimension_value ?? "NULL"}</span>
+        <span className="dimension-row-track"><i style={{ width: `${(profile.record_count / maxRows) * 100}%`, "--heat": String(Math.max(0.12, heatIntensity(metric.rate))) } as React.CSSProperties} /></span>
+        <span className="dimension-number">{profile.record_count.toLocaleString()}</span>
+        <span className="dimension-number" title={column ? missingDetail(column, includeEmpty) : undefined}>{column ? `${(metric.rate * 100).toFixed(1)}%` : "—"}</span>
+        {kind === "string" && <span className="dimension-number">{column?.distinct_count?.toLocaleString() ?? "—"}</span>}
+        {kind === "boolean" && <span className="dimension-number">{column ? `${trueRate.toFixed(1)}%` : "—"}</span>}
+        {kind === "range" && <><span className="dimension-number">{String(column?.min_value ?? "—")}</span><span className="dimension-number">{String(column?.max_value ?? "—")}</span></>}
+      </div>;
+    })}
+  </div>;
+}
+
+function DimensionTable({ profiles, filter, dimensionName, includeEmpty, temporal }: {
+  profiles: ProfileSlice[];
+  filter: TypeFilter;
+  dimensionName: string;
+  includeEmpty: boolean;
+  temporal: boolean;
+}) {
+  const orderedProfiles = useMemo(() => {
+    if (!temporal) return profiles;
+    return [...profiles].sort((left, right) => {
+      if (left.dimension_value === null) return 1;
+      if (right.dimension_value === null) return -1;
+      return right.dimension_value.localeCompare(left.dimension_value);
+    });
+  }, [profiles, temporal]);
+  const columns = orderedProfiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
+  const [expandedColumn, setExpandedColumn] = useState<string | null>(columns[0]?.name ?? null);
+
+  useEffect(() => {
+    setExpandedColumn(columns[0]?.name ?? null);
+  }, [dimensionName, filter]);
+
+  return <div className="dimension-table">
+    <div className="dimension-table-header"><span>Column</span><span>Type</span><span>{includeEmpty ? "Missing" : "Null"} by {dimensionName}</span><span>Metrics</span><span /></div>
+    {columns.map((baseColumn) => {
+      const expanded = expandedColumn === baseColumn.name;
+      const toggle = () => setExpandedColumn((current) => current === baseColumn.name ? null : baseColumn.name);
+      return <div className="dimension-column" key={baseColumn.name}>
+        <div className="dimension-column-row" role="button" tabIndex={0} aria-expanded={expanded} onClick={toggle}
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            toggle();
+          }}>
+          <div className="column-name"><strong>{baseColumn.name}</strong><small>{baseColumn.description}</small></div>
+          <div><code>{baseColumn.data_type}</code></div>
+          <div className="heatmap categorical-heatmap" style={{ "--point-count": orderedProfiles.length } as React.CSSProperties}>
+            {orderedProfiles.map((profile, index) => {
+              const column = profile.columns.find((item) => item.name === baseColumn.name);
+              const rate = column ? missingMetric(column, includeEmpty).rate : 0;
+              return <span key={`${profile.dimension_value ?? "NULL"}-${index}`} className={column ? `heat-cell ${rate === 0 ? "zero" : ""}` : "heat-cell missing"}
+                style={{ "--heat": String(heatIntensity(rate)) } as React.CSSProperties}
+                title={`${dimensionName} = ${profile.dimension_value ?? "NULL"}: ${column ? `${(rate * 100).toFixed(1)}% ${includeEmpty ? "MISSING" : "NULL"} · ${missingDetail(column, includeEmpty)}` : "No data"}`} />;
+            })}
+          </div>
+          <DimensionMetricSummary profiles={orderedProfiles} columnName={baseColumn.name} dimensionName={dimensionName} />
+          <button className="dimension-expand" aria-label={`${expanded ? "Collapse" : "Expand"} ${baseColumn.name} details`} aria-expanded={expanded}
+            onClick={(event) => { event.stopPropagation(); toggle(); }}>{expanded ? "⌄" : "›"}</button>
+        </div>
+        {expanded && <DimensionDetail profiles={orderedProfiles} columnName={baseColumn.name} dimensionName={dimensionName} includeEmpty={includeEmpty} />}
+      </div>;
+    })}
+    {columns.length === 0 && <div className="empty-state">No columns match this type.</div>}
+  </div>;
 }
 
 function LineageCard({ id, relation, current = false, onSelect }: {
@@ -267,7 +305,6 @@ function App() {
   const [selectedModel, setSelectedModel] = useState("");
   const [sliceIndex, setSliceIndex] = useState(0);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [trendRange, setTrendRange] = useState<TrendRange>(30);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
@@ -316,7 +353,7 @@ function App() {
   )), [model]);
   const activeDimension = slice?.dimension_name ?? null;
   const dimensionSlices = model?.profiles.filter((profile) => profile.dimension_name === activeDimension) ?? [];
-  const temporalDimension = activeDimension !== null && (isTemporal(dimensionSlices) || model?.columns.some((column) => column.name === activeDimension && column.data_type === "DATE"));
+  const temporalDimension = activeDimension !== null && (isTemporal(dimensionSlices) || Boolean(model?.columns.some((column) => column.name === activeDimension && column.data_type === "DATE")));
   const latestDimensionSlice = temporalDimension
     ? dimensionSlices.filter((profile) => profile.dimension_value !== null).sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? "")).at(-1)
     : undefined;
@@ -437,6 +474,7 @@ function App() {
             <button className={activeDimension === null ? "active" : ""} onClick={() => selectDimension(null)}>Overall</button>
             {dimensionNames.map((dimension) => <button className={activeDimension === dimension ? "active" : ""} key={dimension} onClick={() => selectDimension(dimension)}>{dimension}</button>)}
           </div>
+          {activeDimension !== null && <span className="dimension-meta">{dimensionSlices.length.toLocaleString()} values</span>}
         </div>
 
         <div className="columns-heading">
@@ -444,20 +482,12 @@ function App() {
           <div className="type-tabs" aria-label="Filter columns by type">
             {typeFilters.map((filter) => <button className={typeFilter === filter.value ? "active" : ""} key={filter.value} onClick={() => setTypeFilter(filter.value)}>{filter.label}</button>)}
           </div>
-          {temporalDimension && <div className="range-tabs" aria-label="Trend range">
-            {([30, 90, "all"] as TrendRange[]).map((range) => <button className={trendRange === range ? "active" : ""} key={range} onClick={() => setTrendRange(range)}>{range === "all" ? "All" : `Latest ${range}`}</button>)}
-          </div>}
         </div>
         {activeDimension === null && <div className="table-wrap">
           <table><thead>{renderHeaders()}</thead><tbody>{visibleColumns.map((column) => <tr key={column.name}>{renderCells(column)}</tr>)}</tbody></table>
           {visibleColumns.length === 0 && <div className="empty-state">No columns match this type.</div>}
         </div>}
-        {temporalDimension && <TemporalTable profiles={dimensionSlices.filter((profile) => profile.dimension_value !== null)} filter={typeFilter} range={trendRange} includeEmpty={includeEmpty} />}
-        {temporalDimension && dimensionSlices.some((profile) => profile.dimension_value === null) && <>
-          <p>NULL partition · {dimensionSlices.find((profile) => profile.dimension_value === null)?.record_count.toLocaleString()} rows</p>
-          <CategoricalTable profiles={dimensionSlices.filter((profile) => profile.dimension_value === null)} filter={typeFilter} dimensionName={activeDimension!} includeEmpty={includeEmpty} />
-        </>}
-        {activeDimension !== null && !temporalDimension && <CategoricalTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} includeEmpty={includeEmpty} />}
+        {activeDimension !== null && <DimensionTable profiles={dimensionSlices} filter={typeFilter} dimensionName={activeDimension} includeEmpty={includeEmpty} temporal={temporalDimension} />}
       </>}
       {model && <LineagePanel model={model} models={models} onSelect={selectModel} />}
     </section>
