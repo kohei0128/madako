@@ -254,7 +254,7 @@ FALSE Countは、
 
 # 9. Dimension Profiling
 
-MVPの対象とする。現在のSQL生成はDATE dimensionのみで、categorical dimensionは保存・表示まで対応している。
+MVPの対象とする。DATEとSTRING dimensionのSQL生成・保存・表示に対応する。STRINGはOverallで得たDistinct数が設定上限を超える場合、そのdimensionだけをスキップする。
 
 テーブル全体のprofileだけでなく、
 
@@ -310,7 +310,10 @@ models:
             - created_date
             - service
             - source
+          max_dimension_values: 10000
 ```
+
+STRING dimensionの実行可否はabsoluteなDistinct数で判断する。Distinct ratioはカラムの性質を理解するために保存・表示するが、初期実装では自動拒否条件に使わない。判定にはOverall profileの結果を再利用し、専用のBigQuery queryは追加しない。
 
 現在の設定schemaと既定値は[README](../README.md#dbt-projectの取り込みと実行)を参照する。
 
@@ -395,9 +398,17 @@ profiling:
 
 を表示する。
 
+加えて、STRING dimensionには次のcardinality上限を設定できる。
+
+```yaml
+profiling:
+  max_dimension_values: 10000
+```
+
+上限超過時はそのdimensionだけをスキップし、理由、Distinct数、設定上限をCLIへ表示する。他のrelationやdimensionは継続する。
+
 将来的には、
 
-* dimension cardinality上限
 * 危険なGROUP BYの検知
 * incremental profiling
 

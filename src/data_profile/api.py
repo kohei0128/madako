@@ -55,8 +55,8 @@ class ProfileResult(BaseModel):
 
     @property
     def successful(self) -> bool:
-        """All items succeeded and storage was updated."""
-        return self.storage_updated and all(item.status == "succeeded" for item in self.items)
+        """No items failed and completed results were saved."""
+        return self.storage_updated and not self.failed
 
     @property
     def failed(self) -> tuple[ProfileItemResult, ...]:

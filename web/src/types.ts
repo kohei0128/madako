@@ -10,6 +10,7 @@ export interface ColumnProfile {
   missing_count: number;
   missing_rate: number;
   distinct_count: number | null;
+  distinct_ratio: number | null;
   min_value: string | number | boolean | null;
   max_value: string | number | boolean | null;
   true_count: number | null;
@@ -37,6 +38,7 @@ export interface ModelProfile {
   profiling: {
     enabled: boolean;
     dimensions: string[];
+    max_dimension_values: number;
     max_bytes_billed: number;
     treat_empty_string_as_null: boolean;
   };

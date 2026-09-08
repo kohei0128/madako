@@ -112,13 +112,20 @@ class DuckDBProfileRepository:
                 missing = ("empty_string_count, missing_count, missing_rate"
                            if {"empty_string_count", "missing_count", "missing_rate"} <= profile_columns
                            else "0, null_count, null_rate")
+                distinct_ratio = (
+                    "distinct_ratio"
+                    if "distinct_ratio" in profile_columns
+                    else "CASE WHEN distinct_count IS NULL THEN NULL WHEN record_count = 0 "
+                    "THEN 0.0 ELSE distinct_count::DOUBLE / record_count END"
+                )
                 key = "unique_id" if current else "model_name"
                 keys = [row[0] if current else row[2] for row in rows]
                 profile_rows = connection.execute(
                     f"""
                     SELECT {key}, profile_order, dimension_name, dimension_value, record_count,
                            column_name, column_type, column_description, null_count,
-                           null_rate, {missing}, distinct_count, min_value, max_value, true_count
+                           null_rate, {missing}, distinct_count, {distinct_ratio},
+                           min_value, max_value, true_count
                     FROM read_parquet(?)
                     WHERE {key} IN (SELECT unnest(?))
                     ORDER BY {key}, profile_order, column_order
@@ -157,9 +164,10 @@ class DuckDBProfileRepository:
                 missing_count=profile_row[10],
                 missing_rate=profile_row[11],
                 distinct_count=profile_row[12],
-                min_value=self._decode_value(profile_row[13], profile_row[5]),
-                max_value=self._decode_value(profile_row[14], profile_row[5]),
-                true_count=profile_row[15],
+                distinct_ratio=profile_row[13],
+                min_value=self._decode_value(profile_row[14], profile_row[5]),
+                max_value=self._decode_value(profile_row[15], profile_row[5]),
+                true_count=profile_row[16],
             ))
         if current_metadata is not None:
             slices.append(ProfileSlice(

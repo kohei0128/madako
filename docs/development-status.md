@@ -19,8 +19,8 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 | 領域 | 実装済み | 残る制限 |
 |---|---|---|
 | dbt import | project内のmodels / sources / columns / tests / direct dependencies、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
-| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
-| Profiling | OverallとDATE dimension、型別metrics、NULL bucket | categoricalは保存・表示のみ。SQL生成はDATE dimensionだけ |
+| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
+| Profiling | OverallとDATE / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | TIMESTAMP、複合型などは除外 |
 | 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
@@ -32,7 +32,8 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 
 - `plan()`はSQLとdry-run推定を作成する。曖昧な名前のselectionは拒否し、`unique_id`の指定を要求する。
 - `run()`は対象relationの存在と、plan作成時のschema・設定を実query前に確認する。変更済みなら再planを要求する。
-- query結果では、Overallの存在、slice内のカラム集合・型・重複、件数・率、DATE bucketの行数合計を検証する。
+- query結果では、Overallの存在、slice内のカラム集合・型・重複、件数・率、dimension bucketの行数合計を検証する。
+- STRING dimensionはOverallの`distinct_count`を使い、`max_dimension_values`超過時はそのdimensionだけをスキップする。判定専用queryは発行しない。
 - `bq`の取得上限100,000 metric rowsに到達した結果は、不完全な可能性があるため保存しない。全件paginationは未実装。
 - query・変換失敗は該当項目を`failed`、後続を`skipped`にし、今回の結果を保存しない。
 - `succeeded`はqueryと変換の成功。`storage_updated`は保存完了。保存・plan作成の失敗は例外となる。
@@ -48,7 +49,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 - Profile Byは1つの値へのfilterではなく、dimension valuesの比較軸とする。
 - DATEはheatmapと最新・previous partitionを表示する。Latest 30 / 90は保存された日付bucket数で、暦日数ではない。
 - DATEのNULL bucketは日付の並び・最新partitionから外し、別の表で表示する。
-- categoricalはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
+- STRING dimensionはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。
 - Lineageは詳細画面の末尾に上流・選択relation・下流を横並びで表示し、dbtのdirect dependencyだけを辿る。表示中のrelationへ画面内で移動できる。
@@ -62,7 +63,7 @@ repositoryは一覧取得時にrelationごとに接続・queryする方式から
 
 ## 検証
 
-Python unit test 87件、Web production build、`madako` wheel / sdist buildを実行した。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認した。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認した。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認した。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認した。
+Python unit test 93件、Web production build、`madako` wheel / sdist buildを実行する。作業directory外の一時venvへcore wheelだけをinstallし、FastAPIに依存せずimport・sample生成・読み取りができることを確認している。wheelにWeb UIと`madako` CLIが含まれ、`madako serve`の同一process・portからHTML、API、JS assetを取得できることも確認している。最小dbt projectをrepository外へコピーし、install済みwheelの公開APIによるimport・plan・run・保存も確認している。BigQuery helperを呼ばずに独自型・SQL・結果変換を行うadapterと、0.1形式のadapter互換性もunit testで確認している。
 
 GitHub ActionsではPython 3.12 / 3.13のunit test、Web build、Playwright、package build、clean install smokeを実行する。Playwrightは`madako serve`が配信する同梱UIに接続し、同名relation選択、Refresh、NULL bucket表示、direct lineageの表示・移動をChromiumで確認する。
 
@@ -78,5 +79,5 @@ NUMERIC / BIGNUMERIC対応後に一時datasetで大きな正負の小数を再�
 
 ## 次に決めること
 
-1. categoricalのquery生成と、高cardinality時の取得・保存制限。
+1. STRING dimensionの実BigQuery検証と既定上限の運用評価。
 2. 長時間queryの進捗・timeout・job ID。

@@ -10,7 +10,7 @@ Madakoは、**dbtのドキュメントと実データの状態を一緒に見ら
 
 - dbtのモデル・ソース・カラム・説明・テストを一覧表示
 - 実データから行数、NULL率、Distinct数、Min / Maxなどを取得
-- DATEカラムごとの変化を比較
+- DATEや低カーディナリティなSTRINGカラムごとの変化を比較
 - profiling対象とクエリごとの上限をdbtのYAMLで管理
 - 結果をローカルのParquetへ保存し、`madako serve`だけで閲覧
 
@@ -47,11 +47,12 @@ models:
       meta:
         profiling:
           enabled: true
-          dimensions: [event_date]
+          dimensions: [event_date, service]
+          max_dimension_values: 10000
           max_bytes_billed: 1000000000
 ```
 
-`dimensions`を省略するとモデル全体だけを集計します。現在、実データから生成できるdimensionはDATE型です。
+`dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATEまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
 
 ### 2. Madakoを設定する
 
@@ -110,17 +111,19 @@ madako profile --help
 
 - 実行前に対象クエリをすべてdry runします。
 - `max_bytes_billed`を超えるクエリがあれば、実データへのクエリを開始しません。
+- STRING dimensionはOverallを先に実行し、追加クエリなしでDistinct数を確認してから実行します。
+- `max_dimension_values`を超えるSTRING dimensionは理由を表示してスキップし、他のprofileは継続します。
 - 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。
 - UIの操作だけでBigQueryへのクエリが発行されることはありません。
 
 対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。
 
-OverallとDATE dimensionを生成できます。categorical dimensionは保存済みデータの表示のみ対応しています。DATEのNULL bucketは日付比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
+OverallとDATE / STRING dimensionを生成できます。STRINGのDistinct数とDistinct ratioも表示します。DATEのNULL bucketは日付比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
 ## 現在の制約
 
 - BigQuery以外のwarehouseにはまだ対応していません。
 - dbt selection syntaxには未対応です。`--select`にはモデル名または`unique_id`を指定します。
-- categorical dimensionは表示のみ対応し、profiling queryはまだ生成できません。
+- STRING以外のcategorical型はdimension queryを生成できません。
 - storageはローカル利用向けです。同時更新や更新中の読み取りは保証していません。
 
 Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更される可能性があります。

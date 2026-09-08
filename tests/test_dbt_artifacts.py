@@ -21,7 +21,8 @@ def dbt_project(tmp_path: Path) -> Path:
                     "amount": {"data_type": "INTEGER"}},
         "depends_on": {"nodes": ["source.demo.raw.events"]},
         "config": {"materialized": "view", "meta": {"profiling": {
-            "enabled": True, "dimensions": ["event_date"], "max_bytes_billed": 1000,
+            "enabled": True, "dimensions": ["event_date"],
+            "max_dimension_values": 500, "max_bytes_billed": 1000,
         }}},
     }
     source = {**model, "unique_id": "source.demo.raw.events", "resource_type": "source",
@@ -59,6 +60,7 @@ def test_reads_models_sources_and_catalog(dbt_project: Path) -> None:
     assert model.tests == ["not_null"]
     assert model.upstream_ids == ["source.demo.raw.events"]
     assert model.profiling.dimensions == ["event_date"]
+    assert model.profiling.max_dimension_values == 500
     assert model.profiling.max_bytes_billed == 1000
     assert source.profiling.treat_empty_string_as_null
     assert source.relation_name == "`project.raw.raw_events`"
@@ -80,8 +82,8 @@ def test_public_api_loads_dbt_project_and_builds_plan(dbt_project: Path, tmp_pat
         app = DataProfile.from_dbt_project(dbt_project, tmp_path / "storage", estimator=lambda *_: 100)
     plan = app.plan(select="model.demo.events")
     assert len(app.models()) == 2
-    assert plan.items[0].dimension == "event_date"
-    assert plan.estimated_bytes == 100
+    assert [item.dimension for item in plan.items] == [None, "event_date"]
+    assert plan.estimated_bytes == 200
 
 
 def test_manifest_only_fallback(dbt_project: Path) -> None:

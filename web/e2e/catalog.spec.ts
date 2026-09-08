@@ -38,6 +38,14 @@ test("shows the null date partition separately", async ({ page }) => {
   await expect(page.getByText("Latest partition").locator("..")).toContainText("2026-09-01");
 });
 
+test("shows distinct count and ratio for string columns", async ({ page }) => {
+  await page.getByRole("button", { name: "String" }).click();
+  const category = page.locator("tbody tr").filter({ hasText: "category" });
+
+  await expect(category.locator(".value-cell").nth(0)).toHaveText("2");
+  await expect(category.locator(".value-cell").nth(1)).toHaveText("20.0%");
+});
+
 test("shows and navigates direct upstream and downstream lineage", async ({ page }) => {
   const lineage = page.getByLabel("Direct lineage");
   await expect(lineage.getByText("3 upstream · 1 downstream")).toBeVisible();

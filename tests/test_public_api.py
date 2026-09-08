@@ -51,6 +51,12 @@ def profile_rows() -> list[dict]:
     return rows
 
 
+def rows_for_sql(sql: str, rows: list[dict] | None = None) -> list[dict]:
+    available = rows if rows is not None else profile_rows()
+    dimension = "event_date" if "'event_date' AS dimension_name" in sql else None
+    return [row for row in available if row.get("dimension_name") == dimension]
+
+
 def test_public_api_plans_profiles_and_persists_results(tmp_path: Path) -> None:
     write_profile_storage([configured_model()], tmp_path)
     estimator_calls: list[str] = []
@@ -58,15 +64,15 @@ def test_public_api_plans_profiles_and_persists_results(tmp_path: Path) -> None:
     app = DataProfile.from_storage(
         tmp_path,
         estimator=lambda sql, *_: estimator_calls.append(sql) or 1_000,
-        runner=lambda sql, *_: runner_calls.append(sql) or profile_rows(),
+        runner=lambda sql, *_: runner_calls.append(sql) or rows_for_sql(sql),
     )
 
     plan = app.plan(select="events")
 
     assert isinstance(plan, ProfilePlan)
     assert plan.executable is True
-    assert plan.estimated_bytes == 1_000
-    assert len(estimator_calls) == 1
+    assert plan.estimated_bytes == 2_000
+    assert len(estimator_calls) == 2
 
     result = app.run(plan)
 
@@ -74,9 +80,9 @@ def test_public_api_plans_profiles_and_persists_results(tmp_path: Path) -> None:
     assert result.successful is True
     assert result.storage_updated is True
     assert result.items[0].status == "succeeded"
-    assert result.items[0].row_count == len(profile_rows())
+    assert result.items[0].row_count == 2
     assert result.profiled_models == ("events",)
-    assert len(runner_calls) == 1
+    assert len(runner_calls) == 2
     assert result.models_path.exists()
     assert result.profiles_path.exists()
     persisted = app.models()[0]
@@ -89,13 +95,51 @@ def test_profile_is_plan_and_run_shortcut(tmp_path: Path) -> None:
     app = DataProfile(
         tmp_path,
         estimator=lambda *_: 1_000,
-        runner=lambda *_: profile_rows(),
+        runner=lambda sql, *_: rows_for_sql(sql),
     )
 
     result = app.profile(select="events")
 
     assert result.profiled_models == ("events",)
-    assert result.plan.items[0].dimension == "event_date"
+    assert [item.dimension for item in result.plan.items] == [None, "event_date"]
+
+
+def test_cardinality_skip_is_successful_and_saves_overall_profile(tmp_path: Path) -> None:
+    model = configured_model().model_copy(update={
+        "columns": [ColumnMetadata(name="user_id", data_type="STRING")],
+        "profiling": ProfilingConfig(
+            enabled=True,
+            dimensions=["user_id"],
+            max_dimension_values=1,
+        ),
+    })
+    write_profile_storage([model], tmp_path)
+    runner_calls: list[str] = []
+
+    def run(sql: str, *_args) -> list[dict]:
+        runner_calls.append(sql)
+        return [{
+            "dimension_name": None,
+            "dimension_value": None,
+            "record_count": "10",
+            "column_order": "0",
+            "column_name": "user_id",
+            "column_type": "STRING",
+            "null_count": "0",
+            "null_rate": "0",
+            "distinct_count": "2",
+            "min_value": None,
+            "max_value": None,
+            "true_count": None,
+        }]
+
+    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=run).profile()
+
+    assert result.successful is True
+    assert result.storage_updated is True
+    assert [item.status for item in result.items] == ["succeeded", "skipped"]
+    assert len(runner_calls) == 1
+    assert [profile.dimension_name for profile in DataProfile(tmp_path).models()[0].profiles] == [None]
 
 
 def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) -> None:
@@ -114,7 +158,7 @@ def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) 
     assert result.storage_updated is False
     assert result.profiled_models == ()
     assert result.failed[0].error == "warehouse unavailable"
-    assert result.skipped == ()
+    assert len(result.skipped) == 1
     assert (tmp_path / "models.parquet").read_bytes() == models_before
     assert (tmp_path / "column_profiles.parquet").read_bytes() == profiles_before
 
@@ -137,12 +181,12 @@ def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_row
         def execute(self, sql, project, location, max_bytes_billed):
             assert (project, location, max_bytes_billed) == ("billing", "US", 10_000)
             self.calls += 1
-            return profile_rows() if self.calls == 1 else bad_rows
+            return rows_for_sql(sql) if self.calls == 1 else bad_rows
 
     adapter = FakeWarehouse()
     app = DataProfile.from_storage(tmp_path, adapter=adapter)
     result = app.profile(project="billing", location="US")
-    assert [item.status for item in result.items] == ["succeeded", "failed", "skipped"]
+    assert [item.status for item in result.items] == ["succeeded", "failed"] + ["skipped"] * 4
     assert adapter.calls == 2
     assert not result.storage_updated
     assert not result.successful
@@ -155,7 +199,7 @@ def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
     from data_profile import StorageOperationError
 
     write_profile_storage([configured_model()], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
 
     def fail_save(*args):
         raise OSError("disk full")
@@ -188,10 +232,10 @@ def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: 
 
     storage = MemoryStorage()
 
-    def run(*args):
+    def run(sql, *_args):
         if failure:
             raise RuntimeError("query failure")
-        return profile_rows()
+        return rows_for_sql(sql)
 
     app = DataProfile.from_storage(tmp_path, storage=storage, estimator=lambda *_: 1, runner=run)
     result = app.profile()
@@ -208,7 +252,7 @@ def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
     model = configured_model()
     write_profile_storage([model], tmp_path)
     calls = []
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: calls.append(True) or profile_rows())
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: calls.append(True) or rows_for_sql(sql))
     plan = app.plan()
     if change == "remove":
         write_profile_storage([], tmp_path)
@@ -228,7 +272,7 @@ def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
 @pytest.mark.parametrize("bad_result", ["column", "duplicate", "bucket", "record_count", "type", "rate"])
 def test_incomplete_results_preserve_existing_storage(tmp_path: Path, bad_result: str) -> None:
     write_profile_storage([configured_model()], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     before = [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]]
     rows = profile_rows()
@@ -244,7 +288,7 @@ def test_incomplete_results_preserve_existing_storage(tmp_path: Path, bad_result
         rows[-1]["column_type"] = "STRING"
     else:
         rows[-1]["null_rate"] = "0.5"
-    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: rows).profile()
+    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql, rows)).profile()
     assert not result.successful
     assert result.failed
     assert [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]] == before
@@ -255,7 +299,7 @@ def test_null_date_bucket_is_saved_separately_from_overall(tmp_path: Path) -> No
     rows = profile_rows()
     for row in rows[2:]:
         row["dimension_value"] = None
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: rows)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql, rows))
     assert app.profile().successful
     profiles = app.models()[0].profiles
     assert [(profile.dimension_name, profile.dimension_value) for profile in profiles] == [(None, None), ("event_date", None)]
@@ -266,7 +310,7 @@ def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch
     from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
     model = configured_model()
     write_profile_storage([model], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     model.profiling.treat_empty_string_as_null = changed
     monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [model])
@@ -280,7 +324,7 @@ def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Pa
     from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
     current = configured_model()
     write_profile_storage([current], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda *_: profile_rows())
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     profiled = app.models()[0].model_copy(update={"profile_version": 1})
     write_profile_storage([profiled], tmp_path)
@@ -299,7 +343,7 @@ def test_empty_table_has_overall_without_date_buckets(tmp_path: Path) -> None:
     rows = profile_rows()[:2]
     for row in rows:
         row.update(record_count="0", min_value=None, max_value=None, null_rate=None)
-    app = DataProfile(tmp_path, estimator=lambda *_: 0, runner=lambda *_: rows)
+    app = DataProfile(tmp_path, estimator=lambda *_: 0, runner=lambda sql, *_: rows_for_sql(sql, rows))
     assert app.profile().successful
     persisted = app.models()[0]
     assert len(persisted.profiles) == 1

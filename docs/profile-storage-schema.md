@@ -61,6 +61,7 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | missing_count | BIGINT | No | 設定に応じたNULLと空文字の合算Count |
 | missing_rate | DOUBLE | No | 0から1のMissing Rate |
 | distinct_count | BIGINT | Yes | STRING用 |
+| distinct_ratio | DOUBLE | Yes | STRING用。`distinct_count / record_count` |
 | min_value | VARCHAR | Yes | Numeric / DATE用 |
 | max_value | VARCHAR | Yes | Numeric / DATE用 |
 | true_count | BIGINT | Yes | BOOLEAN用 |
@@ -78,6 +79,8 @@ Dimension profileは、同じ`dimension_name`に対してvalueごとのrowを持
 dimension_name  = "created_date"
 dimension_value = "2026-08-30"
 ```
+
+`distinct_ratio`がない既存v1 storageは、読み取り時に`distinct_count / record_count`から補完する。空tableで`distinct_count=0`の場合は0とする。
 
 DATE columnがNULLのbucketは`dimension_name="event_date", dimension_value=NULL`として保存する。Overallとはdimension名で区別する。UIでは日付の並び・最新partitionから除外して別表示する。
 

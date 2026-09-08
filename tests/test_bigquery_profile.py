@@ -1,4 +1,4 @@
-from data_profile.bigquery_profile import generate_profile_sql, rows_to_profiles
+from data_profile.bigquery_profile import ProfilingError, generate_profile_sql, rows_to_profiles
 from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 
 
@@ -18,14 +18,29 @@ def model() -> ModelProfile:
     )
 
 
-def test_generates_overall_and_dimension_sql() -> None:
+def test_generates_dimension_only_sql() -> None:
     sql = generate_profile_sql(model(), "event_date")
 
     assert "FROM `project.dataset.events`" in sql
     assert "GROUP BY `event_date`" in sql
     assert "COUNT(DISTINCT `category`)" in sql
     assert "CAST(MIN(`amount`) AS STRING)" in sql
-    assert "UNION ALL" in sql
+    assert "overall_agg" not in sql
+    assert "UNION ALL" not in sql
+
+
+def test_string_can_be_used_as_dimension() -> None:
+    sql = generate_profile_sql(model(), "category")
+
+    assert "GROUP BY `category`" in sql
+    assert "'category' AS dimension_name" in sql
+
+
+def test_non_date_or_string_dimension_is_rejected() -> None:
+    import pytest
+
+    with pytest.raises(ProfilingError, match="DATE or STRING"):
+        generate_profile_sql(model(), "amount")
 
 
 def test_reconstructs_profile_slices() -> None:
@@ -70,6 +85,7 @@ def test_empty_strings_can_be_counted_as_missing_and_excluded_from_distinct() ->
     assert "COUNTIF(`category` = '') AS m1_empty_string_count" in sql
     assert "COUNTIF(`category` IS NULL OR `category` = '') AS m1_missing_count" in sql
     assert "COUNT(DISTINCT NULLIF(`category`, ''))" in sql
+    assert "SAFE_DIVIDE(m1_distinct_count, record_count) AS distinct_ratio" in sql
     assert "COUNTIF(`amount` IS NULL) AS m2_missing_count" in sql
 
 
@@ -98,6 +114,8 @@ def test_reconstructs_separate_null_empty_and_missing_metrics() -> None:
     assert column.empty_string_count == 2
     assert column.missing_count == 3
     assert column.missing_rate == 0.3
+    assert column.distinct_count == 4
+    assert column.distinct_ratio == 0.4
 
 
 def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
