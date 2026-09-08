@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test.beforeEach(async ({ page }) => {
   await page.goto("/");
   const explorer = page.locator(".explorer");
-  await expect(explorer.locator(".model-item")).toHaveCount(3);
+  await expect(explorer.locator(".model-item")).toHaveCount(5);
   await explorer.getByRole("button", { name: /model events$/ }).click();
 });
 
@@ -20,7 +20,7 @@ test("selects same-name relations by unique id", async ({ page }) => {
 });
 
 test("refreshes metadata and keeps the selected relation", async ({ page }) => {
-  const source = page.locator(".model-item").filter({ hasText: "source" });
+  const source = page.locator(".explorer").getByRole("button", { name: /source events$/ });
   await source.click();
   const refreshed = page.waitForResponse(
     (response) => response.url().includes("/api/models?include_profiles=false"),
@@ -40,19 +40,26 @@ test("shows the null date partition separately", async ({ page }) => {
 
 test("shows and navigates direct upstream and downstream lineage", async ({ page }) => {
   const lineage = page.getByLabel("Direct lineage");
-  await expect(lineage.getByText("1 upstream · 1 downstream")).toBeVisible();
+  await expect(lineage.getByText("3 upstream · 1 downstream")).toBeVisible();
   const upstream = lineage.getByRole("button", { name: "Open source events" });
+  const upstreamCards = lineage.locator(".lineage-column.upstream .lineage-card");
   const selected = lineage.locator(".lineage-card.current");
   const downstream = lineage.getByRole("button", { name: "Open model event_summary" });
   await expect(upstream).toBeVisible();
   await expect(downstream).toBeVisible();
   await expect(selected.locator(".lineage-kind")).toHaveText("model");
   await expect(selected.locator("small")).toHaveText("demo / analytics");
-  const [upstreamBox, selectedBox, downstreamBox] = await Promise.all([
-    upstream.boundingBox(), selected.boundingBox(), downstream.boundingBox(),
+  const incomingArrow = lineage.locator(".lineage-arrow.incoming");
+  const outgoingArrow = lineage.locator(".lineage-arrow.outgoing");
+  const [firstUpstreamBox, selectedBox, downstreamBox, incomingArrowBox, outgoingArrowBox] = await Promise.all([
+    upstreamCards.first().boundingBox(), selected.boundingBox(), downstream.boundingBox(),
+    incomingArrow.boundingBox(), outgoingArrow.boundingBox(),
   ]);
-  expect(Math.abs(upstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
+  const selectedCenter = selectedBox!.y + selectedBox!.height / 2;
+  expect(Math.abs(firstUpstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
   expect(Math.abs(downstreamBox!.y - selectedBox!.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(incomingArrowBox!.y + incomingArrowBox!.height / 2 - selectedCenter)).toBeLessThanOrEqual(1);
+  expect(Math.abs(outgoingArrowBox!.y + outgoingArrowBox!.height / 2 - selectedCenter)).toBeLessThanOrEqual(1);
 
   await upstream.click();
 
@@ -69,13 +76,13 @@ test("omits empty lineage directions and their arrows", async ({ page }) => {
 
   await expect(page.locator(".title-row h1")).toHaveText("event_summary");
   await expect(lineage.locator(".lineage-column.downstream")).toBeEmpty();
-  await expect(lineage.locator(".lineage-arrow.outgoing")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.outgoing")).toHaveCount(0);
   await expect(lineage.getByText("No downstream relations")).toHaveCount(0);
 
   await page.locator(".explorer").getByRole("button", { name: /source events$/ }).click();
 
   await expect(page.locator(".title-row h1")).toHaveText("events");
   await expect(lineage.locator(".lineage-column.upstream")).toBeEmpty();
-  await expect(lineage.locator(".lineage-arrow.incoming")).toBeEmpty();
+  await expect(lineage.locator(".lineage-arrow.incoming")).toHaveCount(0);
   await expect(lineage.getByText("No upstream relations")).toHaveCount(0);
 });

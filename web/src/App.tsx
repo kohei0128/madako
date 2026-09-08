@@ -244,9 +244,14 @@ function LineagePanel({ model, models, onSelect }: {
     </div>
     <div className="lineage-flow">
       <div className="lineage-column upstream">{upstream.length > 0 && <><h3>Upstream</h3>{group(upstream)}</>}</div>
-      <div className="lineage-arrow incoming" aria-hidden="true">{upstream.length > 0 ? "→" : ""}</div>
-      <div className="lineage-column focus"><h3>Selected</h3><LineageCard id={model.unique_id} relation={model} current onSelect={onSelect} /></div>
-      <div className="lineage-arrow outgoing" aria-hidden="true">{downstream.length > 0 ? "→" : ""}</div>
+      <div className="lineage-column focus">
+        <h3>Selected</h3>
+        <div className="lineage-selected">
+          {upstream.length > 0 && <span className="lineage-arrow incoming" aria-hidden="true">→</span>}
+          <LineageCard id={model.unique_id} relation={model} current onSelect={onSelect} />
+          {downstream.length > 0 && <span className="lineage-arrow outgoing" aria-hidden="true">→</span>}
+        </div>
+      </div>
       <div className="lineage-column downstream">{downstream.length > 0 && <><h3>Downstream</h3>{group(downstream)}</>}</div>
     </div>
   </section>;
