@@ -111,9 +111,15 @@ code { color: #21684e; background: #edf6f2; padding: 2px 5px; border-radius: 3px
 .dimension-expand:hover { color: #176846; background: #e4f2ec; }
 .dimension-detail-grid { padding: 18px 22px 22px clamp(120px, 19%, 236px); color: #34433e; background: #f7faf8; border-top: 1px solid #dfe6e3; }
 .dimension-detail-title { margin-bottom: 9px; color: #263630; font-size: 11px; font-weight: 650; }
+.dimension-detail-scroll { max-height: min(420px, 55vh); overflow-y: auto; padding-right: 6px; scrollbar-gutter: stable; }
 .dimension-detail-header, .dimension-detail-row { display: grid; grid-template-columns: 110px minmax(180px, 1fr) 74px 70px 90px; gap: 16px; align-items: center; }
 .dimension-detail-grid.range .dimension-detail-header, .dimension-detail-grid.range .dimension-detail-row { grid-template-columns: 110px minmax(160px, 1fr) 74px 70px minmax(80px, 100px) minmax(80px, 100px); }
-.dimension-detail-header { padding-bottom: 7px; color: #7a8883; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.dimension-detail-header { position: sticky; z-index: 1; top: 0; padding: 0 0 7px; color: #7a8883; background: #f7faf8; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.dimension-detail-header button { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; padding: 3px 0; color: inherit; background: transparent; border: 0; cursor: pointer; font-size: inherit; letter-spacing: inherit; text-align: right; text-transform: inherit; }
+.dimension-detail-header button:first-child, .dimension-detail-header button:nth-child(2) { justify-content: flex-start; text-align: left; }
+.dimension-detail-header button:hover, .dimension-detail-header button.active { color: #176846; }
+.dimension-detail-header button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dimension-detail-header button i { flex: 0 0 auto; font-size: 10px; font-style: normal; }
 .dimension-detail-row { min-height: 36px; font-size: 10px; }
 .dimension-detail-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dimension-row-track { height: 14px; overflow: hidden; background: #e9efec; border-radius: 2px; }
