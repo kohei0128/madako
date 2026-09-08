@@ -35,13 +35,13 @@ def test_plan_resolves_config_and_estimates_cost() -> None:
 
     plan = create_profile_plan([configured_model()], estimator=estimate)
 
-    assert len(plan) == 1
-    assert plan[0].dimension == "event_date"
-    assert plan[0].estimated_bytes == 8_000
-    assert plan[0].executable is True
-    assert plan[0].skipped_columns == ("payload",)
-    assert plan[0].project == "project"
-    assert plan[0].location == "asia-northeast1"
+    assert [item.dimension for item in plan] == [None, "event_date"]
+    assert all(item.estimated_bytes == 8_000 for item in plan)
+    assert all(item.executable for item in plan)
+    assert all(item.skipped_columns == ("payload",) for item in plan)
+    assert all(item.project == "project" for item in plan)
+    assert all(item.location == "asia-northeast1" for item in plan)
+    assert len(calls) == 2
     assert calls[0][1:] == ("project", "asia-northeast1")
 
 
@@ -99,9 +99,14 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
 
     def run(sql: str, project: str, location: str, maximum: int) -> list[dict]:
         calls.append((project, location, maximum))
-        dimension = "processed_date" if "'processed_date' AS dimension_name" in sql else "event_date"
+        dimension = (
+            "processed_date" if "'processed_date' AS dimension_name" in sql
+            else "event_date" if "'event_date' AS dimension_name" in sql
+            else None
+        )
         rows = []
-        for dimension_name, dimension_value in [(None, None), (dimension, "2026-09-01")]:
+        slices = [(None, None)] if dimension is None else [(dimension, "2026-09-01")]
+        for dimension_name, dimension_value in slices:
             for order, column in enumerate(model.columns):
                 rows.append({
                     "dimension_name": dimension_name,
@@ -121,15 +126,106 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
 
     execution = execute_profile_plan([model], plan, runner=run)
 
-    assert len(calls) == 2
+    assert len(calls) == 3
     assert execution.complete is True
-    assert [result.status for result in execution.results] == ["succeeded", "succeeded"]
+    assert [result.status for result in execution.results] == ["succeeded", "succeeded", "succeeded"]
     assert [profile.dimension_name for profile in execution.models[0].profiles] == [
         None,
         "event_date",
         "processed_date",
     ]
     assert execution.models[0].profiled_at is not None
+
+
+def test_high_cardinality_string_dimension_is_skipped_without_stopping_date_dimension() -> None:
+    model = configured_model().model_copy(update={
+        "columns": [
+            ColumnMetadata(name="event_date", data_type="DATE"),
+            ColumnMetadata(name="user_id", data_type="STRING"),
+        ],
+        "profiling": ProfilingConfig(
+            enabled=True,
+            dimensions=["user_id", "event_date"],
+            max_dimension_values=10_000,
+            max_bytes_billed=10_000,
+        ),
+    })
+    plan = create_profile_plan([model], estimator=lambda *_: 1)
+    calls: list[str] = []
+
+    def run(sql: str, *_args) -> list[dict]:
+        calls.append(sql)
+        dimension = "event_date" if "'event_date' AS dimension_name" in sql else None
+        rows = []
+        for order, column in enumerate(model.columns):
+            rows.append({
+                "dimension_name": dimension,
+                "dimension_value": "2026-09-01" if dimension else None,
+                "record_count": "1000000",
+                "column_order": str(order),
+                "column_name": column.name,
+                "column_type": column.data_type,
+                "null_count": "0",
+                "null_rate": "0",
+                "distinct_count": "50000" if column.name == "user_id" else None,
+                "min_value": "2026-09-01" if column.data_type == "DATE" else None,
+                "max_value": "2026-09-01" if column.data_type == "DATE" else None,
+                "true_count": None,
+            })
+        return rows
+
+    execution = execute_profile_plan([model], plan, runner=run)
+
+    assert len(calls) == 2
+    assert execution.complete is True
+    assert [result.status for result in execution.results] == ["succeeded", "skipped", "succeeded"]
+    skipped = execution.results[1]
+    assert skipped.skip_reason == "max_dimension_values"
+    assert skipped.distinct_values == 50_000
+    assert skipped.maximum_allowed == 10_000
+    assert [profile.dimension_name for profile in execution.models[0].profiles] == [None, "event_date"]
+
+
+def test_small_high_ratio_string_dimension_is_executed() -> None:
+    model = configured_model().model_copy(update={
+        "columns": [ColumnMetadata(name="user_id", data_type="STRING")],
+        "profiling": ProfilingConfig(
+            enabled=True,
+            dimensions=["user_id"],
+            max_dimension_values=90,
+        ),
+    })
+    plan = create_profile_plan([model], estimator=lambda *_: 1)
+    calls: list[str] = []
+
+    def row(dimension_value: str | None, count: int, distinct: int) -> dict:
+        return {
+            "dimension_name": "user_id" if dimension_value is not None else None,
+            "dimension_value": dimension_value,
+            "record_count": str(count),
+            "column_order": "0",
+            "column_name": "user_id",
+            "column_type": "STRING",
+            "null_count": "0",
+            "null_rate": "0",
+            "distinct_count": str(distinct),
+            "min_value": None,
+            "max_value": None,
+            "true_count": None,
+        }
+
+    def run(sql: str, *_args) -> list[dict]:
+        calls.append(sql)
+        if "'user_id' AS dimension_name" not in sql:
+            return [row(None, 100, 90)]
+        return [row(f"user-{index}", 2 if index < 10 else 1, 1) for index in range(90)]
+
+    execution = execute_profile_plan([model], plan, runner=run)
+
+    assert len(calls) == 2
+    assert execution.complete is True
+    assert [result.status for result in execution.results] == ["succeeded", "succeeded"]
+    assert execution.models[0].profiles[0].columns[0].distinct_ratio == 0.9
 
 
 def test_execute_plan_rejects_all_work_before_running_blocked_item() -> None:
@@ -161,7 +257,7 @@ def test_execute_plan_marks_failure_and_skips_remaining_items() -> None:
     )
 
     assert execution.complete is False
-    assert [result.status for result in execution.results] == ["failed", "skipped"]
+    assert [result.status for result in execution.results] == ["failed", "skipped", "skipped"]
     assert execution.results[0].error == "query failed"
 
 

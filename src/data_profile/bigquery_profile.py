@@ -40,51 +40,31 @@ ORDER BY column_order
     dimension_column = next((column for column in model.columns if column.name == dimension), None)
     if dimension_column is None:
         raise ResultValidationError(f"dimension column not found: {dimension}")
-    if dimension_column.data_type != "DATE":
-        raise ResultValidationError(f"dimension must be DATE, got {dimension_column.data_type}")
+    if dimension_column.data_type not in {"DATE", "STRING"}:
+        raise ResultValidationError(
+            f"dimension must be DATE or STRING, got {dimension_column.data_type}"
+        )
 
-    overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
     dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
-    overall_structs = _metric_structs(supported)
     dimension_structs = _metric_structs(supported)
     relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
     return f"""
-WITH overall_agg AS (
-  SELECT
-    COUNT(*) AS record_count,
-    {overall_metrics}
-  FROM {relation}
-),
-dimension_agg AS (
+WITH dimension_agg AS (
   SELECT
     CAST(`{dimension}` AS STRING) AS dimension_value,
     COUNT(*) AS record_count,
     {dimension_metrics}
   FROM {relation}
   GROUP BY `{dimension}`
-),
-overall_profile AS (
-  SELECT
-    CAST(NULL AS STRING) AS dimension_name,
-    CAST(NULL AS STRING) AS dimension_value,
-    record_count,
-    metric.*
-  FROM overall_agg
-  CROSS JOIN UNNEST([{overall_structs}]) AS metric
-),
-dimension_profile AS (
-  SELECT
-    '{_escape_string(dimension)}' AS dimension_name,
-    dimension_value,
-    record_count,
-    metric.*
-  FROM dimension_agg
-  CROSS JOIN UNNEST([{dimension_structs}]) AS metric
 )
-SELECT * FROM overall_profile
-UNION ALL
-SELECT * FROM dimension_profile
-ORDER BY dimension_name, dimension_value, column_order
+SELECT
+  '{_escape_string(dimension)}' AS dimension_name,
+  dimension_value,
+  record_count,
+  metric.*
+FROM dimension_agg
+CROSS JOIN UNNEST([{dimension_structs}]) AS metric
+ORDER BY dimension_value, column_order
 """.strip()
 
 
@@ -149,13 +129,12 @@ def rows_to_profiles(
 
 def _validate_profiles(model: ModelProfile, profiles: list[ProfileSlice], dimension: str | None) -> None:
     overall = [profile for profile in profiles if profile.dimension_name is None]
-    if len(overall) != 1:
-        raise ResultValidationError("query result is missing Overall metrics")
     buckets = [profile for profile in profiles if profile.dimension_name is not None]
-    if any(profile.dimension_name != dimension for profile in buckets):
+    if dimension is None:
+        if len(overall) != 1 or buckets:
+            raise ResultValidationError("query result must contain exactly one Overall profile")
+    elif overall or any(profile.dimension_name != dimension for profile in buckets):
         raise ResultValidationError("query result contains an unexpected dimension")
-    if dimension is not None and sum(profile.record_count for profile in buckets) != overall[0].record_count:
-        raise ResultValidationError("dimension record counts do not match Overall; result may be incomplete")
     for profile in profiles:
         for column in profile.columns:
             expected_missing = column.null_count + (
@@ -171,6 +150,12 @@ def _validate_profiles(model: ModelProfile, profiles: list[ProfileSlice], dimens
                 expected_rate = count / profile.record_count if profile.record_count else 0
                 if not isclose(rate, expected_rate, rel_tol=1e-6, abs_tol=1e-9):
                     raise ResultValidationError("query result has inconsistent metric rates")
+            if column.distinct_count is not None:
+                expected_ratio = column.distinct_count / profile.record_count if profile.record_count else 0
+                if column.distinct_ratio is None or not isclose(
+                    column.distinct_ratio, expected_ratio, rel_tol=1e-6, abs_tol=1e-9,
+                ):
+                    raise ResultValidationError("query result has an inconsistent distinct ratio")
 
 
 def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_null: bool) -> str:
@@ -224,6 +209,7 @@ def _metric_structs(columns: list[ColumnMetadata]) -> str:
       m{index}_missing_count AS missing_count,
       SAFE_DIVIDE(m{index}_missing_count, record_count) AS missing_rate,
       m{index}_distinct_count AS distinct_count,
+      SAFE_DIVIDE(m{index}_distinct_count, record_count) AS distinct_ratio,
       m{index}_min_value AS min_value,
       m{index}_max_value AS max_value,
       m{index}_true_count AS true_count
@@ -241,6 +227,14 @@ def _row_to_column(row: dict, metadata: ColumnMetadata) -> ColumnProfile:
     elif data_type == "FLOAT64":
         min_value = float(min_value) if min_value is not None else None
         max_value = float(max_value) if max_value is not None else None
+    distinct_count = int(row["distinct_count"]) if row.get("distinct_count") is not None else None
+    record_count = int(row["record_count"])
+    if row.get("distinct_ratio") is not None:
+        distinct_ratio = float(row["distinct_ratio"])
+    elif distinct_count is None:
+        distinct_ratio = None
+    else:
+        distinct_ratio = distinct_count / record_count if record_count else 0
     return ColumnProfile(
         name=metadata.name,
         data_type=data_type,
@@ -250,7 +244,8 @@ def _row_to_column(row: dict, metadata: ColumnMetadata) -> ColumnProfile:
         empty_string_count=int(row.get("empty_string_count") or 0),
         missing_count=int(row.get("missing_count", row["null_count"])),
         missing_rate=float(row.get("missing_rate", row.get("null_rate")) or 0),
-        distinct_count=int(row["distinct_count"]) if row.get("distinct_count") is not None else None,
+        distinct_count=distinct_count,
+        distinct_ratio=distinct_ratio,
         min_value=min_value,
         max_value=max_value,
         true_count=int(row["true_count"]) if row.get("true_count") is not None else None,

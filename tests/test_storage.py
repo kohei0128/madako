@@ -170,6 +170,29 @@ def test_lineage_round_trip(tmp_path: Path) -> None:
     assert storage.load()[0].upstream_ids == ["source.test.raw.events"]
 
 
+def test_distinct_ratio_round_trip_and_legacy_fallback(tmp_path: Path) -> None:
+    import duckdb
+    from data_profile.sample import sample_models
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save(sample_models())
+    _, profiles_path = storage.paths
+    loaded = storage.load()[0]
+    category = loaded.profiles[0].columns[0]
+    assert category.distinct_count == 2
+    assert category.distinct_ratio == 0.2
+
+    with duckdb.connect() as connection:
+        connection.execute(
+            "CREATE TABLE old_profiles AS SELECT * EXCLUDE(distinct_ratio) FROM read_parquet(?)",
+            [str(profiles_path)],
+        )
+        connection.execute("COPY old_profiles TO ? (FORMAT PARQUET)", [str(profiles_path)])
+
+    legacy_category = storage.load()[0].profiles[0].columns[0]
+    assert legacy_category.distinct_ratio == 0.2
+
+
 def test_legacy_storage_migrates_only_when_names_are_unambiguous(tmp_path: Path) -> None:
     import duckdb
     from data_profile.sample import sample_models

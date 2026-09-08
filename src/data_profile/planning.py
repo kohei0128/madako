@@ -52,6 +52,11 @@ class ProfileItemResult(BaseModel):
     status: Literal["succeeded", "failed", "skipped"] = Field(description="Execution status")
     row_count: Annotated[int, Field(ge=0)] = Field(default=0, description="Number of rows returned")
     error: str | None = Field(default=None, description="Error message if status is 'failed'")
+    skip_reason: Literal["max_dimension_values"] | None = Field(
+        default=None, description="Reason for an intentional dimension skip"
+    )
+    distinct_values: Annotated[int | None, Field(ge=0)] = None
+    maximum_allowed: Annotated[int | None, Field(gt=0)] = None
 
     model_config = {"frozen": True}
 
@@ -96,7 +101,7 @@ def create_profile_plan(
     for model in enabled:
         skipped = tuple(column.name for column in model.columns if column.data_type not in supported_types)
         query_project = project or model.database
-        dimensions: list[str | None] = model.profiling.dimensions or [None]
+        dimensions: list[str | None] = [None, *model.profiling.dimensions]
         for dimension in dimensions:
             try:
                 sql = warehouse.build_profile_query(model, dimension)
@@ -154,15 +159,60 @@ def execute_profile_plan(
     profiles_by_model: dict[str, list] = {}
     results: list[ProfileItemResult] = []
     for index, item in enumerate(plan):
+        collected = profiles_by_model.setdefault(item.model.unique_id, [])
+        if item.dimension is not None:
+            dimension_column = next(
+                column for column in item.model.columns if column.name == item.dimension
+            )
+            if dimension_column.data_type == "STRING":
+                overall = next(
+                    (profile for profile in collected if profile.dimension_name is None), None
+                )
+                if overall is None:
+                    raise PlanningError(
+                        f"Overall profile must run before dimension {item.dimension}"
+                    )
+                dimension_metric = next(
+                    (column for column in overall.columns if column.name == item.dimension), None
+                )
+                if dimension_metric is None or dimension_metric.distinct_count is None:
+                    raise PlanningError(
+                        f"Overall profile did not produce distinct count for {item.dimension}"
+                    )
+                distinct_values = dimension_metric.distinct_count
+                maximum_allowed = item.model.profiling.max_dimension_values
+                if distinct_values > maximum_allowed:
+                    results.append(ProfileItemResult(
+                        item=item,
+                        status="skipped",
+                        error=(
+                            f"dimension has {distinct_values:,} distinct values; "
+                            f"maximum allowed is {maximum_allowed:,}"
+                        ),
+                        skip_reason="max_dimension_values",
+                        distinct_values=distinct_values,
+                        maximum_allowed=maximum_allowed,
+                    ))
+                    continue
         try:
             rows = execute(item.sql, item.project, item.location, item.max_bytes_billed)
             profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
             overall = [profile for profile in profiles if profile.dimension_name is None]
             dimensions = [profile for profile in profiles if profile.dimension_name is not None]
-            if len(overall) != 1:
+            if item.dimension is None and (len(overall) != 1 or dimensions):
                 raise ResultValidationError("adapter result must contain exactly one Overall profile")
-            if any(profile.dimension_name != item.dimension for profile in dimensions):
+            if item.dimension is not None and (
+                overall or any(profile.dimension_name != item.dimension for profile in dimensions)
+            ):
                 raise ResultValidationError("adapter result contains an unexpected dimension")
+            if item.dimension is not None:
+                model_overall = next(
+                    profile for profile in collected if profile.dimension_name is None
+                )
+                if sum(profile.record_count for profile in dimensions) != model_overall.record_count:
+                    raise ResultValidationError(
+                        "dimension record counts do not match Overall; result may be incomplete"
+                    )
         except Exception as error:
             results.append(ProfileItemResult(item=item, status="failed", error=str(error)))
             results.extend(ProfileItemResult(
@@ -171,10 +221,7 @@ def execute_profile_plan(
                 error="not executed because an earlier item failed",
             ) for remaining in plan[index + 1:])
             return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
-        collected = profiles_by_model.setdefault(item.model.unique_id, [])
-        if not collected:
-            collected.extend(profile for profile in profiles if profile.dimension_name is None)
-        collected.extend(profile for profile in profiles if profile.dimension_name is not None)
+        collected.extend(profiles)
         results.append(ProfileItemResult(item=item, status="succeeded", row_count=len(rows)))
 
     profiled_at = datetime.now(UTC)

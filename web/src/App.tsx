@@ -89,7 +89,12 @@ function BooleanMetric({ column, slice }: { column: ColumnProfile; slice: Profil
 
 function CompactMetrics({ column, slice }: { column: ColumnProfile; slice: ProfileSlice }) {
   if (column.data_type === "STRING") {
-    return <div className="single-metric"><small>Distinct</small><strong>{column.distinct_count?.toLocaleString() ?? "—"}</strong></div>;
+    return <PairMetric
+      leftLabel="Distinct"
+      leftValue={column.distinct_count?.toLocaleString() ?? "—"}
+      rightLabel="Ratio"
+      rightValue={column.distinct_ratio === null ? "—" : `${(column.distinct_ratio * 100).toFixed(1)}%`}
+    />;
   }
   if (column.data_type === "BOOL") return <BooleanMetric column={column} slice={slice} />;
   return <PairMetric leftLabel="Min" leftValue={String(column.min_value ?? "—")} rightLabel="Max" rightValue={String(column.max_value ?? "—")} />;
@@ -360,7 +365,7 @@ function App() {
 
   function renderHeaders() {
     const missingLabel = includeEmpty ? "MISSING" : "NULL";
-    if (typeFilter === "string") return <tr><th>Column</th><th>{missingLabel}</th><th>Distinct</th></tr>;
+    if (typeFilter === "string") return <tr><th>Column</th><th>{missingLabel}</th><th>Distinct</th><th>Distinct ratio</th></tr>;
     if (typeFilter === "numeric") return <tr><th>Column</th><th>Type</th><th>{missingLabel}</th><th>Min</th><th>Max</th></tr>;
     if (typeFilter === "boolean") return <tr><th>Column</th><th>{missingLabel}</th><th>TRUE</th></tr>;
     if (typeFilter === "date") return <tr><th>Column</th><th>{missingLabel}</th><th>Min date</th><th>Max date</th></tr>;
@@ -369,7 +374,7 @@ function App() {
 
   function renderCells(column: ColumnProfile) {
     const columnCell = <td className="column-name"><strong>{column.name}</strong><small>{column.description}</small></td>;
-    if (typeFilter === "string") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{column.distinct_count?.toLocaleString() ?? "—"}</td></>;
+    if (typeFilter === "string") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{column.distinct_count?.toLocaleString() ?? "—"}</td><td className="value-cell">{column.distinct_ratio === null ? "—" : `${(column.distinct_ratio * 100).toFixed(1)}%`}</td></>;
     if (typeFilter === "numeric") return <>{columnCell}<td><code>{column.data_type}</code></td><td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;
     if (typeFilter === "boolean") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td><BooleanMetric column={column} slice={slice!} /></td></>;
     if (typeFilter === "date") return <>{columnCell}<td><NullMetric column={column} includeEmpty={includeEmpty} /></td><td className="value-cell">{String(column.min_value ?? "—")}</td><td className="value-cell">{String(column.max_value ?? "—")}</td></>;

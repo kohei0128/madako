@@ -23,6 +23,7 @@ Madakoには3層のバージョニングがあります:
   - optionalな`profile_version`による計算version保存
   - optionalな`upstream_ids_json`によるdirect lineage保存
   - `empty_string_count`, `missing_count`, `missing_rate` による詳細な欠損値追跡
+  - optionalな`distinct_ratio`によるSTRINGのDistinct比率保存
 
 ### バージョニングルール
 
@@ -54,6 +55,7 @@ ProfilingConfigのフィールドは影響範囲によって分類されます:
 
 - `treat_empty_string_as_null`: missing_count/missing_rate の計算に影響
 - `dimensions`: どの次元で分割するか
+- `max_dimension_values`: 保存するSTRING dimensionの有無に影響
 - （将来追加される計算パラメータ）
 
 #### 実行制御フィールド
@@ -69,6 +71,7 @@ ProfilingConfigのフィールドは影響範囲によって分類されます:
 class ProfilingConfig(BaseModel):
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
+    max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
     max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
     treat_empty_string_as_null: bool = False
     # 新規追加（デフォルト値あり）
@@ -144,11 +147,11 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
 
 ## 4. Profile Computation Version
 
-現在のversionは**2**。version 2でNUMERIC / BIGNUMERICのMin / Max profilingを追加した。
+現在のversionは**3**。version 2でNUMERIC / BIGNUMERICのMin / Max profilingを追加し、version 3でSTRING dimensionとDistinct ratioを追加した。
 
 profile保存時に`models.parquet.profile_version`へ記録する。dbt artifactの再import時は、保存済みversionが現在の`PROFILE_COMPUTATION_VERSION`と一致する場合だけ既存profileを引き継ぐ。`profile_version`列がない既存v1 storageはversion 1として読み取るため、今回の変更後は再profileされる。
 
-Parquetの物理形式はMin / Maxを既にVARCHARで保持しているため、NUMERIC / BIGNUMERIC追加によるschema version変更は不要。
+`distinct_ratio`は既存schema version 1へのoptional列追加として扱う。列がない既存storageは読み取り時にDistinct数と行数から補完するため、schema version変更は不要。
 
 ## 5. 実装リファレンス
 

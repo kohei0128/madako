@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 MetricValue = str | int | float | bool | date | None
-PROFILE_COMPUTATION_VERSION = 2
+PROFILE_COMPUTATION_VERSION = 3
 
 
 class ColumnProfile(BaseModel):
@@ -18,6 +18,7 @@ class ColumnProfile(BaseModel):
     missing_count: Annotated[int, Field(ge=0)] = 0
     missing_rate: Annotated[float, Field(ge=0, le=1)] = 0
     distinct_count: Annotated[int | None, Field(ge=0)] = None
+    distinct_ratio: Annotated[float | None, Field(ge=0, le=1)] = None
     min_value: MetricValue = None
     max_value: MetricValue = None
     true_count: Annotated[int | None, Field(ge=0)] = None
@@ -43,6 +44,9 @@ class ProfileSlice(BaseModel):
     def validate_dimension_pair(self) -> "ProfileSlice":
         if self.dimension_name is None and self.dimension_value is not None:
             raise ValueError("Overall must have a null dimension_value")
+        for column in self.columns:
+            if column.distinct_count is not None and column.distinct_ratio is None:
+                column.distinct_ratio = column.distinct_count / self.record_count if self.record_count else 0
         return self
 
 
@@ -70,6 +74,7 @@ class ProfilingConfig(BaseModel):
 
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
+    max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
     max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
     treat_empty_string_as_null: bool = False
 

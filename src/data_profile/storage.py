@@ -319,6 +319,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                     column.missing_count,
                     column.missing_rate,
                     column.distinct_count,
+                    column.distinct_ratio,
                     _encode_value(column.min_value),
                     _encode_value(column.max_value),
                     column.true_count,
@@ -365,6 +366,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                 missing_count BIGINT NOT NULL,
                 missing_rate DOUBLE NOT NULL,
                 distinct_count BIGINT,
+                distinct_ratio DOUBLE,
                 min_value VARCHAR,
                 max_value VARCHAR,
                 true_count BIGINT
@@ -372,7 +374,7 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
         """)
         if profile_rows:
             connection.executemany(
-                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 profile_rows,
             )
         connection.execute("COPY models TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(models_path)])

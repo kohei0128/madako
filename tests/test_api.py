@@ -48,6 +48,7 @@ def test_get_model_profile(storage: ParquetProfileStorage) -> None:
         "source.demo.raw_users",
         "source.demo.raw_campaigns",
     ]
+    assert payload["profiles"][0]["columns"][0]["distinct_ratio"] == 0.2
 
 
 def test_bundled_web_ui_is_served(storage: ParquetProfileStorage) -> None:
@@ -212,6 +213,7 @@ def test_cli_options_override_config(
 def test_cli_profile_imports_dbt_artifacts_before_profiling(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     project_dir = tmp_path / "dbt-project"
     storage_dir = tmp_path / ".madako"
@@ -221,8 +223,19 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     )
     calls: list[object] = []
     plan = SimpleNamespace(items=())
+    skipped = SimpleNamespace(
+        item=SimpleNamespace(
+            model=SimpleNamespace(name="events"),
+            dimension="user_id",
+        ),
+        status="skipped",
+        error="dimension cardinality exceeds limit",
+        skip_reason="max_dimension_values",
+        distinct_values=1_284_392,
+        maximum_allowed=10_000,
+    )
     result = SimpleNamespace(
-        items=(),
+        items=(skipped,),
         successful=True,
         profiled_models=(),
         plan=plan,
@@ -252,6 +265,11 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         {"select": "events", "project": None, "location": "asia-northeast1"},
     )
     assert calls[2] == ("run", plan)
+    output = capsys.readouterr().out
+    assert "[SKIPPED] events.user_id" in output
+    assert "Dimension profiling skipped" in output
+    assert "Distinct values: 1,284,392" in output
+    assert "Maximum allowed: 10,000" in output
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
