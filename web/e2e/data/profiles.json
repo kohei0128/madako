@@ -12,7 +12,8 @@
     "columns": [
       {"name": "event_date", "data_type": "DATE", "description": "Event date"},
       {"name": "category", "data_type": "STRING", "description": "Event category"},
-      {"name": "amount", "data_type": "NUMERIC", "description": "Exact amount"}
+      {"name": "amount", "data_type": "NUMERIC", "description": "Exact amount"},
+      {"name": "score", "data_type": "FLOAT64", "description": "Floating-point score"}
     ],
     "profiled_at": "2026-09-06T00:00:00Z",
     "profiles": [
@@ -23,17 +24,30 @@
         "columns": [
           {"name": "event_date", "data_type": "DATE", "null_count": 2, "null_rate": 0.2, "min_value": "2026-08-31", "max_value": "2026-09-01"},
           {"name": "category", "data_type": "STRING", "null_count": 0, "null_rate": 0, "distinct_count": 2},
-          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.1, "min_value": "-12345678901234567890.123456789", "max_value": "12345678901234567890.123456789"}
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.1, "min_value": "-12345678901234567890.123456789", "max_value": "12345678901234567890.123456789"},
+          {"name": "score", "data_type": "FLOAT64", "null_count": 1, "null_rate": 0.1, "min_value": 1.5, "max_value": 10}
         ]
       },
       {
         "dimension_name": "event_date",
         "dimension_value": "2026-09-01",
-        "record_count": 8,
+        "record_count": 6,
         "columns": [
           {"name": "event_date", "data_type": "DATE", "null_count": 0, "null_rate": 0, "min_value": "2026-09-01", "max_value": "2026-09-01"},
           {"name": "category", "data_type": "STRING", "null_count": 0, "null_rate": 0, "distinct_count": 2},
-          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.125, "min_value": "-10.5", "max_value": "12345678901234567890.123456789"}
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 1, "null_rate": 0.1666666667, "min_value": "-10.5", "max_value": "12345678901234567890.123456789"},
+          {"name": "score", "data_type": "FLOAT64", "null_count": 1, "null_rate": 0.1666666667, "min_value": 2.5, "max_value": 10}
+        ]
+      },
+      {
+        "dimension_name": "event_date",
+        "dimension_value": "2026-08-31",
+        "record_count": 2,
+        "columns": [
+          {"name": "event_date", "data_type": "DATE", "null_count": 0, "null_rate": 0, "min_value": "2026-08-31", "max_value": "2026-08-31"},
+          {"name": "category", "data_type": "STRING", "null_count": 0, "null_rate": 0, "distinct_count": 1},
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 0, "null_rate": 0, "min_value": "1.5", "max_value": "8.5"},
+          {"name": "score", "data_type": "FLOAT64", "null_count": 0, "null_rate": 0, "min_value": 1.5, "max_value": 8}
         ]
       },
       {
@@ -43,7 +57,8 @@
         "columns": [
           {"name": "event_date", "data_type": "DATE", "null_count": 2, "null_rate": 1, "min_value": null, "max_value": null},
           {"name": "category", "data_type": "STRING", "null_count": 0, "null_rate": 0, "distinct_count": 1},
-          {"name": "amount", "data_type": "NUMERIC", "null_count": 0, "null_rate": 0, "min_value": "-12345678901234567890.123456789", "max_value": "2.5"}
+          {"name": "amount", "data_type": "NUMERIC", "null_count": 0, "null_rate": 0, "min_value": "-12345678901234567890.123456789", "max_value": "2.5"},
+          {"name": "score", "data_type": "FLOAT64", "null_count": 0, "null_rate": 0, "min_value": 4, "max_value": 9.5}
         ]
       }
     ]
