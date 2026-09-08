@@ -24,7 +24,7 @@ dbt artifacts + BigQuery
 
 ## まず画面を試す
 
-Python 3.12以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
+Python 3.11以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
 
 ```bash
 uv tool install 'madako[web] @ git+https://github.com/kohei0128/madako.git'
