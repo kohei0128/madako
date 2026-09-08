@@ -37,7 +37,9 @@ test("shows date dimension values in descending order with null last", async ({ 
   await expect(page.locator(".dimension-meta")).toHaveText("3 values");
   await expect(page.getByText("Latest partition").locator("..")).toContainText("2026-09-01");
 
-  const dateColumn = page.locator(".dimension-column").filter({ hasText: "event_date" });
+  const dateColumn = page.locator(".dimension-column").filter({
+    has: page.locator(".column-name strong", { hasText: /^event_date$/ }),
+  });
   const row = dateColumn.locator(".dimension-column-row");
   await expect(row).toHaveAttribute("aria-expanded", "false");
   await expect(dateColumn.locator(".dimension-detail-grid")).toHaveCount(0);
