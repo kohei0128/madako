@@ -44,7 +44,7 @@ test("shows date dimension values in descending order with null last", async ({ 
 
 test("expands dimension details from the whole column row", async ({ page }) => {
   await page.getByRole("button", { name: "event_date" }).click();
-  await page.getByRole("button", { name: "String" }).click();
+  await page.locator(".type-tabs").getByRole("button", { name: "String" }).click();
 
   const category = page.locator(".dimension-column").filter({ hasText: "category" });
   const row = category.locator(".dimension-column-row");
@@ -58,7 +58,7 @@ test("expands dimension details from the whole column row", async ({ page }) => 
 
 test("shows min and max instead of distinct for float dimension details", async ({ page }) => {
   await page.getByRole("button", { name: "event_date" }).click();
-  await page.getByRole("button", { name: "Numeric" }).click();
+  await page.locator(".type-tabs").getByRole("button", { name: "Numeric" }).click();
 
   const score = page.locator(".dimension-column").filter({ hasText: "score" });
   await score.locator(".dimension-column-row").click();
