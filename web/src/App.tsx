@@ -145,40 +145,85 @@ function dimensionMetricKind(column: ColumnProfile): "string" | "boolean" | "ran
   return "range";
 }
 
-function DimensionDetail({ profiles, columnName, dimensionName, includeEmpty }: {
+type DimensionSortKey = "dimension" | "rowBar" | "rows" | "missing" | "distinct" | "true" | "min" | "max";
+type SortDirection = "asc" | "desc";
+
+function DimensionDetail({ profiles, columnName, dimensionName, includeEmpty, temporal }: {
   profiles: ProfileSlice[];
   columnName: string;
   dimensionName: string;
   includeEmpty: boolean;
+  temporal: boolean;
 }) {
   const first = profiles.flatMap((profile) => profile.columns.filter((column) => column.name === columnName))[0];
+  const [sort, setSort] = useState<{ key: DimensionSortKey; direction: SortDirection } | null>(
+    temporal ? { key: "dimension", direction: "desc" } : null,
+  );
   if (!first) return null;
   const kind = dimensionMetricKind(first);
   const maxRows = Math.max(1, ...profiles.map((profile) => profile.record_count));
   const missingLabel = includeEmpty ? "Missing" : "Null";
+  const valueForSort = (profile: ProfileSlice, key: DimensionSortKey): string | number | boolean | null => {
+    const column = profile.columns.find((item) => item.name === columnName);
+    if (key === "dimension") return profile.dimension_value;
+    if (key === "rowBar" || key === "rows") return profile.record_count;
+    if (!column) return null;
+    if (key === "missing") return missingMetric(column, includeEmpty).rate;
+    if (key === "distinct") return column.distinct_count;
+    if (key === "true") return profile.record_count ? (column.true_count ?? 0) / profile.record_count : 0;
+    if (key === "min") return column.min_value;
+    return column.max_value;
+  };
+  const compareValues = (left: string | number | boolean, right: string | number | boolean, key: DimensionSortKey): number => {
+    if (key === "dimension") return String(left).localeCompare(String(right));
+    if ((key === "min" || key === "max") && first.data_type === "DATE") return String(left).localeCompare(String(right));
+    if ((key === "min" || key === "max") && (first.data_type === "NUMERIC" || first.data_type === "BIGNUMERIC")) return compareDecimalStrings(String(left), String(right));
+    if (typeof left === "number" && typeof right === "number") return left - right;
+    if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
+    const numericDifference = Number(left) - Number(right);
+    return Number.isNaN(numericDifference) ? String(left).localeCompare(String(right)) : numericDifference;
+  };
+  const orderedProfiles = sort ? [...profiles].sort((left, right) => {
+    const leftValue = valueForSort(left, sort.key);
+    const rightValue = valueForSort(right, sort.key);
+    if (leftValue === null && rightValue === null) return 0;
+    if (leftValue === null) return 1;
+    if (rightValue === null) return -1;
+    const result = compareValues(leftValue, rightValue, sort.key);
+    return sort.direction === "asc" ? result : -result;
+  }) : profiles;
+  const toggleSort = (key: DimensionSortKey) => setSort((current) => current?.key === key
+    ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key, direction: key === "dimension" ? "asc" : "desc" });
+  const sortHeader = (key: DimensionSortKey, label: string) => <button type="button" className={sort?.key === key ? "active" : ""}
+    aria-label={`Sort by ${label}`} onClick={() => toggleSort(key)}>
+    <span>{label}</span><i aria-hidden="true">{sort?.key === key ? (sort.direction === "asc" ? "↑" : "↓") : "⇅"}</i>
+  </button>;
 
   return <div className={`dimension-detail-grid ${kind}`}>
     <div className="dimension-detail-title">{columnName} by {dimensionName}</div>
-    <div className="dimension-detail-header">
-      <span>{dimensionName}</span><span>Row count</span><span>Rows</span><span>{missingLabel}</span>
-      {kind === "string" && <span>Distinct</span>}
-      {kind === "boolean" && <span>True</span>}
-      {kind === "range" && <><span>Min</span><span>Max</span></>}
+    <div className="dimension-detail-scroll">
+      <div className="dimension-detail-header">
+        {sortHeader("dimension", dimensionName)}{sortHeader("rowBar", "Row count")}{sortHeader("rows", "Rows")}{sortHeader("missing", missingLabel)}
+        {kind === "string" && sortHeader("distinct", "Distinct")}
+        {kind === "boolean" && sortHeader("true", "True")}
+        {kind === "range" && <>{sortHeader("min", "Min")}{sortHeader("max", "Max")}</>}
+      </div>
+      {orderedProfiles.map((profile, index) => {
+        const column = profile.columns.find((item) => item.name === columnName);
+        const metric = column ? missingMetric(column, includeEmpty) : { count: 0, rate: 0 };
+        const trueRate = column && profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0;
+        return <div className="dimension-detail-row" key={`${profile.dimension_value ?? "NULL"}-${index}`}>
+          <span className={profile.dimension_value === null ? "missing-value" : ""}>{profile.dimension_value ?? "NULL"}</span>
+          <span className="dimension-row-track"><i style={{ width: `${(profile.record_count / maxRows) * 100}%`, "--heat": String(Math.max(0.12, heatIntensity(metric.rate))) } as React.CSSProperties} /></span>
+          <span className="dimension-number">{profile.record_count.toLocaleString()}</span>
+          <span className="dimension-number" title={column ? missingDetail(column, includeEmpty) : undefined}>{column ? `${(metric.rate * 100).toFixed(1)}%` : "—"}</span>
+          {kind === "string" && <span className="dimension-number">{column?.distinct_count?.toLocaleString() ?? "—"}</span>}
+          {kind === "boolean" && <span className="dimension-number">{column ? `${trueRate.toFixed(1)}%` : "—"}</span>}
+          {kind === "range" && <><span className="dimension-number">{String(column?.min_value ?? "—")}</span><span className="dimension-number">{String(column?.max_value ?? "—")}</span></>}
+        </div>;
+      })}
     </div>
-    {profiles.map((profile, index) => {
-      const column = profile.columns.find((item) => item.name === columnName);
-      const metric = column ? missingMetric(column, includeEmpty) : { count: 0, rate: 0 };
-      const trueRate = column && profile.record_count ? ((column.true_count ?? 0) / profile.record_count) * 100 : 0;
-      return <div className="dimension-detail-row" key={`${profile.dimension_value ?? "NULL"}-${index}`}>
-        <span className={profile.dimension_value === null ? "missing-value" : ""}>{profile.dimension_value ?? "NULL"}</span>
-        <span className="dimension-row-track"><i style={{ width: `${(profile.record_count / maxRows) * 100}%`, "--heat": String(Math.max(0.12, heatIntensity(metric.rate))) } as React.CSSProperties} /></span>
-        <span className="dimension-number">{profile.record_count.toLocaleString()}</span>
-        <span className="dimension-number" title={column ? missingDetail(column, includeEmpty) : undefined}>{column ? `${(metric.rate * 100).toFixed(1)}%` : "—"}</span>
-        {kind === "string" && <span className="dimension-number">{column?.distinct_count?.toLocaleString() ?? "—"}</span>}
-        {kind === "boolean" && <span className="dimension-number">{column ? `${trueRate.toFixed(1)}%` : "—"}</span>}
-        {kind === "range" && <><span className="dimension-number">{String(column?.min_value ?? "—")}</span><span className="dimension-number">{String(column?.max_value ?? "—")}</span></>}
-      </div>;
-    })}
   </div>;
 }
 
@@ -198,10 +243,10 @@ function DimensionTable({ profiles, filter, dimensionName, includeEmpty, tempora
     });
   }, [profiles, temporal]);
   const columns = orderedProfiles[0]?.columns.filter((column) => matchesType(column, filter)) ?? [];
-  const [expandedColumn, setExpandedColumn] = useState<string | null>(columns[0]?.name ?? null);
+  const [expandedColumn, setExpandedColumn] = useState<string | null>(null);
 
   useEffect(() => {
-    setExpandedColumn(columns[0]?.name ?? null);
+    setExpandedColumn(null);
   }, [dimensionName, filter]);
 
   return <div className="dimension-table">
@@ -232,7 +277,7 @@ function DimensionTable({ profiles, filter, dimensionName, includeEmpty, tempora
           <button className="dimension-expand" aria-label={`${expanded ? "Collapse" : "Expand"} ${baseColumn.name} details`} aria-expanded={expanded}
             onClick={(event) => { event.stopPropagation(); toggle(); }}>{expanded ? "⌄" : "›"}</button>
         </div>
-        {expanded && <DimensionDetail profiles={orderedProfiles} columnName={baseColumn.name} dimensionName={dimensionName} includeEmpty={includeEmpty} />}
+        {expanded && <DimensionDetail profiles={orderedProfiles} columnName={baseColumn.name} dimensionName={dimensionName} includeEmpty={includeEmpty} temporal={temporal} />}
       </div>;
     })}
     {columns.length === 0 && <div className="empty-state">No columns match this type.</div>}

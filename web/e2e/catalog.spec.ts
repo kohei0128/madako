@@ -37,9 +37,17 @@ test("shows date dimension values in descending order with null last", async ({ 
   await expect(page.locator(".dimension-meta")).toHaveText("3 values");
   await expect(page.getByText("Latest partition").locator("..")).toContainText("2026-09-01");
 
-  const dateColumn = page.locator(".dimension-column").filter({ hasText: "event_date" });
+  const dateColumn = page.locator(".dimension-column").filter({
+    has: page.locator(".column-name strong", { hasText: /^event_date$/ }),
+  });
+  const row = dateColumn.locator(".dimension-column-row");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await expect(dateColumn.locator(".dimension-detail-grid")).toHaveCount(0);
+
+  await row.click();
   await expect(dateColumn.locator(".dimension-detail-row > span:first-child"))
     .toHaveText(["2026-09-01", "2026-08-31", "NULL"]);
+  await expect(dateColumn.locator(".dimension-detail-scroll")).toHaveCSS("overflow-y", "auto");
 });
 
 test("expands dimension details from the whole column row", async ({ page }) => {
@@ -48,6 +56,9 @@ test("expands dimension details from the whole column row", async ({ page }) => 
 
   const category = page.locator(".dimension-column").filter({ hasText: "category" });
   const row = category.locator(".dimension-column-row");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+
+  await row.click({ position: { x: 20, y: 20 } });
   await expect(row).toHaveAttribute("aria-expanded", "true");
   await expect(category.locator(".dimension-detail-header")).toContainText("Distinct");
 
@@ -66,6 +77,13 @@ test("shows min and max instead of distinct for float dimension details", async 
   await expect(header).toContainText("Min");
   await expect(header).toContainText("Max");
   await expect(header).not.toContainText("Distinct");
+
+  await header.getByRole("button", { name: "Sort by Min" }).click();
+  await expect(score.locator(".dimension-detail-row > span:first-child"))
+    .toHaveText(["NULL", "2026-09-01", "2026-08-31"]);
+  await header.getByRole("button", { name: "Sort by Min" }).click();
+  await expect(score.locator(".dimension-detail-row > span:first-child"))
+    .toHaveText(["2026-08-31", "2026-09-01", "NULL"]);
 });
 
 test("shows distinct count and ratio for string columns", async ({ page }) => {
