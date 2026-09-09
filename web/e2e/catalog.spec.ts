@@ -19,6 +19,20 @@ test("selects same-name relations by unique id", async ({ page }) => {
   await expect(page.getByText("10 total rows")).toBeVisible();
 });
 
+test("opens relations from shareable URLs and supports browser history", async ({ page }) => {
+  const explorer = page.locator(".explorer");
+  await expect(page).toHaveURL(/\/relations\/model\.phase4\.events$/);
+
+  await explorer.getByRole("button", { name: /source events$/ }).click();
+  await expect(page).toHaveURL(/\/relations\/source\.phase4\.events$/);
+  await page.reload();
+  await expect(page.locator(".pill")).toHaveText("source");
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/relations\/model\.phase4\.events$/);
+  await expect(page.getByText("10 total rows")).toBeVisible();
+});
+
 test("refreshes metadata and keeps the selected relation", async ({ page }) => {
   const source = page.locator(".explorer").getByRole("button", { name: /source events$/ });
   await source.click();

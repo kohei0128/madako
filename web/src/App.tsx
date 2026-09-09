@@ -8,6 +8,20 @@ const typeFilters: { value: TypeFilter; label: string }[] = [
   { value: "numeric", label: "Numeric" }, { value: "boolean", label: "Boolean" },
   { value: "date", label: "Date/Time" },
 ];
+const relationPathPrefix = "/relations/";
+
+function relationIdFromLocation(): string | null {
+  if (!window.location.pathname.startsWith(relationPathPrefix)) return null;
+  try {
+    return decodeURIComponent(window.location.pathname.slice(relationPathPrefix.length)) || null;
+  } catch {
+    return null;
+  }
+}
+
+function relationPath(id: string): string {
+  return `${relationPathPrefix}${encodeURIComponent(id)}`;
+}
 
 function isTemporalType(dataType: string): boolean {
   return ["DATE", "DATETIME", "TIMESTAMP"].includes(dataType);
@@ -351,7 +365,7 @@ function LineagePanel({ model, models, onSelect }: {
 
 function App() {
   const [models, setModels] = useState<ModelProfile[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedModel, setSelectedModel] = useState(() => relationIdFromLocation() ?? "");
   const [sliceIndex, setSliceIndex] = useState(0);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
   const [query, setQuery] = useState("");
@@ -370,9 +384,18 @@ function App() {
       return response.json() as Promise<ModelProfile[]>;
     }).then((data) => {
       setModels(data);
-      setSelectedModel((current) => data.some((item) => item.unique_id === current) ? current : data[0]?.unique_id ?? "");
+      setSelectedModel((current) => {
+        const selected = data.find((item) => item.unique_id === current) ?? data[0];
+        const next = selected?.unique_id ?? "";
+        if (selected) {
+          setExpandedDatasets((expanded) => new Set(expanded).add(`${selected.database}/${selected.schema}`));
+          if (window.location.pathname !== relationPath(next)) {
+            window.history.replaceState({ relationId: next }, "", relationPath(next));
+          }
+        }
+        return next;
+      });
       setLoaded(true);
-      if (data[0]) setExpandedDatasets(new Set([`${data[0].database}/${data[0].schema}`]));
     })
       .catch((reason: Error) => { if (reason.name !== "AbortError") setError(reason.message); });
     return () => controller.abort();
@@ -392,6 +415,20 @@ function App() {
       .catch((reason: Error) => { if (reason.name !== "AbortError") setError(reason.message); });
     return () => controller.abort();
   }, [selectedModel, revision]);
+
+  useEffect(() => {
+    const restoreSelection = () => {
+      const id = relationIdFromLocation();
+      const selected = models.find((item) => item.unique_id === id);
+      if (!selected) return;
+      setSelectedModel(selected.unique_id);
+      setSliceIndex(0);
+      setTypeFilter("all");
+      setExpandedDatasets((current) => new Set(current).add(`${selected.database}/${selected.schema}`));
+    };
+    window.addEventListener("popstate", restoreSelection);
+    return () => window.removeEventListener("popstate", restoreSelection);
+  }, [models]);
 
   const model = detail?.unique_id === selectedModel ? detail : null;
   const includeEmpty = model?.profiling.treat_empty_string_as_null ?? false;
@@ -445,6 +482,8 @@ function App() {
     setSliceIndex(0);
     setTypeFilter("all");
     if (selected) {
+      const path = relationPath(id);
+      if (window.location.pathname !== path) window.history.pushState({ relationId: id }, "", path);
       setExpandedDatasets((current) => new Set(current).add(`${selected.database}/${selected.schema}`));
     }
   }

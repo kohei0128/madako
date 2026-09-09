@@ -58,6 +58,13 @@ def test_bundled_web_ui_is_served(storage: ParquetProfileStorage) -> None:
     assert "<title>Madako</title>" in response.text
 
 
+def test_bundled_web_ui_is_served_for_relation_deep_link(storage: ParquetProfileStorage) -> None:
+    response = request(create_app(storage), "/relations/model.demo.events")
+
+    assert response.status_code == 200
+    assert "<title>Madako</title>" in response.text
+
+
 def test_date_and_categorical_profiles_are_reconstructed(storage: ParquetProfileStorage) -> None:
     model = storage.get_model("events")
 
