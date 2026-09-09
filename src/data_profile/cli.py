@@ -8,6 +8,19 @@ from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
 
+def _format_bytes(value: int) -> str:
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    size = float(value)
+    unit = units[0]
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            break
+        size /= 1024
+    if unit == "B":
+        return f"{value:,} B"
+    return f"{size:,.1f} {unit}"
+
+
 def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
     for item in plan.items:
         status = "READY" if item.executable else "BLOCKED"
@@ -18,8 +31,8 @@ def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
             print("  Query cost check: disabled")
         else:
             assert item.max_bytes_billed is not None
-            print(f"  Estimated bytes: {item.estimated_bytes:,}")
-            print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
+            print(f"  Estimated: {_format_bytes(item.estimated_bytes)}")
+            print(f"  Maximum billed: {_format_bytes(item.max_bytes_billed)}")
         if item.skipped_columns:
             print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
         if show_sql:
@@ -46,7 +59,8 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
         status = "READY" if item.executable else "BLOCKED"
         print(
             f"[{status} {position}] {label} · "
-            f"{item.estimated_bytes:,} / {item.max_bytes_billed:,} bytes",
+            f"{_format_bytes(item.estimated_bytes)} estimated / "
+            f"{_format_bytes(item.max_bytes_billed)} maximum",
             flush=True,
         )
         if item.skipped_columns:
@@ -61,9 +75,9 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
         if result.status == "succeeded":
             usage = ""
             if result.bytes_processed is not None:
-                usage = f" · {result.bytes_processed:,} bytes processed"
+                usage = f" · {_format_bytes(result.bytes_processed)} processed"
                 if result.bytes_billed is not None:
-                    usage += f" / {result.bytes_billed:,} bytes billed"
+                    usage += f" / {_format_bytes(result.bytes_billed)} billed"
             print(
                 f"[DONE {position}] {label} · {result.row_count:,} metric rows{usage}",
                 flush=True,

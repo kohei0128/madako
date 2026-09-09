@@ -332,7 +332,21 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
     ), tmp_path)
 
     output = capsys.readouterr().out
-    assert "12,345 bytes processed / 10,485,760 bytes billed" in output
+    assert "12.1 KiB processed" in output
+    assert "10.0 MiB billed" in output
+
+
+@pytest.mark.parametrize(("value", "expected"), [
+    (0, "0 B"),
+    (1_023, "1,023 B"),
+    (1_024, "1.0 KiB"),
+    (5 * 1024**2, "5.0 MiB"),
+    (2 * 1024**3, "2.0 GiB"),
+])
+def test_cli_formats_byte_units(value: int, expected: str) -> None:
+    from data_profile.cli import _format_bytes
+
+    assert _format_bytes(value) == expected
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
