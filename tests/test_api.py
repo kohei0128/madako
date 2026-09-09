@@ -333,7 +333,7 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
 
     output = capsys.readouterr().out
     assert "12.1 KiB processed" in output
-    assert "10.0 MiB billed" in output
+    assert "billed" not in output
 
 
 @pytest.mark.parametrize(("value", "expected"), [

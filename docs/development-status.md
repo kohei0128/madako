@@ -22,7 +22,7 @@ dbt artifacts → DataProfile.plan() → optional BigQuery dry run
 | 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、任意のqueryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE / DATETIME / TIMESTAMP / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE / DATETIME / TIMESTAMP、INTEGER / FLOAT / BOOLEANの正規化 | 複合型などは除外 |
-| 実行 | max_bytes_billed指定relationのdry run、上限超過時は全skip、実行後の処理・課金bytes表示、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeoutは未対応 |
+| 実行 | max_bytes_billed指定relationのdry run、上限超過時は全skip、実行後の処理量表示、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeoutは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、CSV一括ロード、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
 | Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh、直接の上流・下流lineage。同梱UIを`madako serve`でAPIと同一portから配信 | 対応ブラウザはCIで検証するChromiumのみ |
@@ -52,7 +52,7 @@ dbt artifacts → DataProfile.plan() → optional BigQuery dry run
 - STRING dimensionはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。
-- `madako profile`はdbt artifact取込、設定されたqueryのdry run、実行、処理・課金bytes、保存を逐次表示する。途中失敗時は完了済みの一時結果を破棄し、storageを更新しなかったことを明示する。
+- `madako profile`はdbt artifact取込、設定されたqueryのdry run、実行、処理量、保存を逐次表示する。途中失敗時は完了済みの一時結果を破棄し、storageを更新しなかったことを明示する。
 - Lineageは詳細画面の末尾に上流・選択relation・下流を横並びで表示し、dbtのdirect dependencyだけを辿る。表示中のrelationへ画面内で移動できる。
 - UI操作からBigQuery queryは発行しない。
 

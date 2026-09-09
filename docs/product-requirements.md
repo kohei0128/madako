@@ -389,7 +389,7 @@ profiling:
   max_bytes_billed: 1000000000  # bytes、queryごとの上限
 ```
 
-上限を指定したrelationではdry runを行い、上限を超えるqueryは実行しない。実行したqueryについては、完了後に処理bytesと課金bytesを表示する。
+上限を指定したrelationではdry runを行い、上限を超えるqueryは実行しない。実行したqueryについては、完了後に処理量を表示する。
 
 可能であれば実行前に、
 
