@@ -163,9 +163,10 @@ Web UIを変更するときだけNode.jsが必要です。
 cd web
 npm ci
 npm run build
-npx playwright install --with-deps chromium
 npm run test:e2e
 ```
+
+`npm run test:e2e`はChromiumと実行に必要な共有ライブラリを自動で準備します。Ubuntuのsystem packageを変更せず、`web/.playwright-deps/`へ展開するため、sudoは不要です。
 
 既定の8000番portが使用中の場合は、`MADAKO_E2E_PORT=18000 npm run test:e2e`のようにE2E用portを変更できます。
 
