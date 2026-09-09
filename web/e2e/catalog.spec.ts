@@ -67,6 +67,21 @@ test("expands dimension details from the whole column row", async ({ page }) => 
   await expect(category.locator(".dimension-detail-grid")).toHaveCount(0);
 });
 
+test("keeps space between the dimension heatmap and metrics", async ({ page }) => {
+  await page.getByRole("button", { name: "event_date" }).click();
+
+  const row = page.locator(".dimension-column-row").first();
+  const heatmap = row.locator(".categorical-heatmap");
+  const metrics = row.locator(".dimension-summary");
+  const [heatmapBox, metricsBox] = await Promise.all([
+    heatmap.boundingBox(), metrics.boundingBox(),
+  ]);
+
+  expect(heatmapBox).not.toBeNull();
+  expect(metricsBox).not.toBeNull();
+  expect(metricsBox!.x - (heatmapBox!.x + heatmapBox!.width)).toBeGreaterThanOrEqual(15);
+});
+
 test("shows min and max instead of distinct for float dimension details", async ({ page }) => {
   await page.getByRole("button", { name: "event_date" }).click();
   await page.locator(".type-tabs").getByRole("button", { name: "Numeric" }).click();

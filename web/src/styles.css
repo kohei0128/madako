@@ -95,14 +95,14 @@ code { color: #21684e; background: #edf6f2; padding: 2px 5px; border-radius: 3px
 .heat-cell.zero { background: #edf1ef; }
 .heat-cell.missing { background: repeating-linear-gradient(135deg, #e5eae8, #e5eae8 2px, #f7f9f8 2px, #f7f9f8 4px); border-bottom: 0; }
 .dimension-table { width: 100%; overflow-x: auto; background: #fff; border: 1px solid #d7dfdc; box-shadow: 0 2px 8px rgba(22, 46, 38, .025); }
-.dimension-table-header, .dimension-column-row { display: grid; grid-template-columns: minmax(220px, 1.4fr) 90px minmax(260px, 1.7fr) minmax(180px, 1fr) 42px; align-items: center; padding: 0 12px; }
+.dimension-table-header, .dimension-column-row { display: grid; grid-template-columns: minmax(220px, 1.4fr) 90px minmax(260px, 1.7fr) minmax(180px, 1fr) 42px; column-gap: 16px; align-items: center; padding: 0 12px; }
 .dimension-table-header { min-height: 40px; color: #667670; background: #f1f4f3; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
 .dimension-column { border-top: 1px solid #e3e8e6; }
 .dimension-column:first-of-type { border-top: 0; }
 .dimension-column-row { min-height: 62px; color: #34433e; background: #fff; cursor: pointer; }
 .dimension-column-row:hover { background: #f7faf8; }
 .dimension-column-row:focus-visible { position: relative; z-index: 1; outline: 2px solid #2b9d70; outline-offset: -2px; }
-.categorical-heatmap { display: flex; gap: 4px; height: 18px; padding-right: 16px; }
+.categorical-heatmap { display: flex; gap: 4px; height: 18px; }
 .categorical-heatmap .heat-cell { flex: 0 1 18px; min-width: 5px; max-width: 18px; height: 18px; border: 1px solid #edf0ef; border-radius: 2px; }
 .dimension-summary strong, .dimension-summary small { display: block; }
 .dimension-summary strong { color: #263630; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
