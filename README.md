@@ -125,7 +125,7 @@ madako profile --help
 
 - `max_bytes_billed`を指定したrelationだけ、実行前に対象クエリをdry runします。
 - dry runしたクエリのいずれかが`max_bytes_billed`を超える場合は、実データへのクエリを開始しません。
-- 各クエリの完了後に、BigQueryが報告した処理bytesと課金bytesをログへ表示します。
+- 各クエリの完了後に、BigQueryが報告した処理量を読みやすい単位でログへ表示します。
 - STRING dimensionはOverallを先に実行し、追加クエリなしでDistinct数を確認してから実行します。
 - `max_dimension_values`を超えるSTRING dimensionは理由を表示してスキップし、他のprofileは継続します。
 - 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。

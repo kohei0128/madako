@@ -76,8 +76,6 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
             usage = ""
             if result.bytes_processed is not None:
                 usage = f" · {_format_bytes(result.bytes_processed)} processed"
-                if result.bytes_billed is not None:
-                    usage += f" / {_format_bytes(result.bytes_billed)} billed"
             print(
                 f"[DONE {position}] {label} · {result.row_count:,} metric rows{usage}",
                 flush=True,
