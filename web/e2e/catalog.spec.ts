@@ -47,9 +47,16 @@ test("refreshes metadata and keeps the selected relation", async ({ page }) => {
 });
 
 test("shows date dimension values in descending order with null last", async ({ page }) => {
+  const profileBy = page.locator(".profile-by");
+  const overallPosition = await profileBy.boundingBox();
   await page.getByRole("button", { name: "event_date" }).click();
   await expect(page.locator(".dimension-meta")).toHaveText("3 values");
-  await expect(page.getByText("Latest partition").locator("..")).toContainText("2026-09-01");
+  const latestPartition = page.locator(".metadata .latest-partition");
+  await expect(latestPartition).toContainText("Latest partition");
+  await expect(latestPartition).toContainText("2026-09-01");
+  await expect(latestPartition).toContainText("6 rows");
+  const dimensionPosition = await profileBy.boundingBox();
+  expect(dimensionPosition!.y).toBeCloseTo(overallPosition!.y, 0);
 
   const dateColumn = page.locator(".dimension-column").filter({
     has: page.locator(".column-name strong", { hasText: /^event_date$/ }),
