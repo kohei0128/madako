@@ -50,9 +50,12 @@ models:
           dimensions: [event_date, service]
           max_dimension_values: 10000
           max_bytes_billed: 1000000000
+          treat_empty_string_as_null: true
 ```
 
 `dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATE、DATETIME、TIMESTAMPまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
+
+`treat_empty_string_as_null: true`を指定すると、STRINGカラムの空文字（`''`）をNULLと合わせてMissingとして集計します。既定値は`false`で、その場合はNULLだけがMissingです。空白だけの文字列（例: `' '`）は空文字に含みません。この設定を変更した後は、`dbt docs generate`と`madako profile`を再実行してください。
 
 ### 2. Madakoを設定する
 
