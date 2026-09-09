@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from data_profile.models import ModelProfile
@@ -46,6 +47,10 @@ def create_app(storage: ProfileStorage | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Model profile not found") from error
 
     if WEB_DIST_DIR.is_dir():
+        @app.get("/relations/{relation_id:path}", include_in_schema=False)
+        def relation_page(relation_id: str) -> FileResponse:
+            return FileResponse(WEB_DIST_DIR / "index.html")
+
         app.mount("/", StaticFiles(directory=WEB_DIST_DIR, html=True), name="web")
 
     return app
