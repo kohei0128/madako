@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import shutil
@@ -5,6 +6,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Protocol
+from uuid import uuid4
 
 import duckdb
 
@@ -325,62 +327,86 @@ def _write_profile_storage_files(models: list[ModelProfile], output_dir: Path) -
                     column.true_count,
                 ))
 
-    with duckdb.connect() as connection:
-        connection.execute("""
-            CREATE TABLE models (
-                schema_version INTEGER NOT NULL,
-                unique_id VARCHAR NOT NULL,
-                resource_type VARCHAR NOT NULL,
-                model_name VARCHAR NOT NULL,
-                database_name VARCHAR NOT NULL,
-                schema_name VARCHAR NOT NULL,
-                relation_name VARCHAR NOT NULL,
-                description VARCHAR NOT NULL,
-                materialization VARCHAR NOT NULL,
-                tags_json VARCHAR NOT NULL,
-                tests_json VARCHAR NOT NULL,
-                columns_json VARCHAR NOT NULL,
-                profiling_json VARCHAR NOT NULL,
-                profiled_at VARCHAR,
-                profile_version INTEGER,
-                upstream_ids_json VARCHAR NOT NULL
-            )
-        """)
-        if model_rows:
-            connection.executemany("INSERT INTO models VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", model_rows)
-        connection.execute("""
-            CREATE TABLE column_profiles (
-                schema_version INTEGER NOT NULL,
-                unique_id VARCHAR NOT NULL,
-                profile_order INTEGER NOT NULL,
-                dimension_name VARCHAR,
-                dimension_value VARCHAR,
-                record_count BIGINT NOT NULL,
-                column_order INTEGER NOT NULL,
-                column_name VARCHAR NOT NULL,
-                column_type VARCHAR NOT NULL,
-                column_description VARCHAR NOT NULL,
-                null_count BIGINT NOT NULL,
-                null_rate DOUBLE NOT NULL,
-                empty_string_count BIGINT NOT NULL,
-                missing_count BIGINT NOT NULL,
-                missing_rate DOUBLE NOT NULL,
-                distinct_count BIGINT,
-                distinct_ratio DOUBLE,
-                min_value VARCHAR,
-                max_value VARCHAR,
-                true_count BIGINT
-            )
-        """)
-        if profile_rows:
-            connection.executemany(
-                "INSERT INTO column_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                profile_rows,
-            )
-        connection.execute("COPY models TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(models_path)])
-        connection.execute("COPY column_profiles TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(profiles_path)])
+    models_csv = output_dir / ".models.csv"
+    profiles_csv = output_dir / ".column_profiles.csv"
+    null_sentinel = f"__MADAKO_NULL_{uuid4().hex}__"
+
+    try:
+        _write_csv_rows(models_csv, model_rows, null_sentinel)
+        _write_csv_rows(profiles_csv, profile_rows, null_sentinel)
+        with duckdb.connect() as connection:
+            connection.execute("BEGIN TRANSACTION")
+            connection.execute("""
+                CREATE TABLE models (
+                    schema_version INTEGER NOT NULL,
+                    unique_id VARCHAR NOT NULL,
+                    resource_type VARCHAR NOT NULL,
+                    model_name VARCHAR NOT NULL,
+                    database_name VARCHAR NOT NULL,
+                    schema_name VARCHAR NOT NULL,
+                    relation_name VARCHAR NOT NULL,
+                    description VARCHAR NOT NULL,
+                    materialization VARCHAR NOT NULL,
+                    tags_json VARCHAR NOT NULL,
+                    tests_json VARCHAR NOT NULL,
+                    columns_json VARCHAR NOT NULL,
+                    profiling_json VARCHAR NOT NULL,
+                    profiled_at VARCHAR,
+                    profile_version INTEGER,
+                    upstream_ids_json VARCHAR NOT NULL
+                )
+            """)
+            if model_rows:
+                connection.execute(
+                    f"COPY models FROM ? (FORMAT CSV, NULL '{null_sentinel}')",
+                    [str(models_csv)],
+                )
+            connection.execute("""
+                CREATE TABLE column_profiles (
+                    schema_version INTEGER NOT NULL,
+                    unique_id VARCHAR NOT NULL,
+                    profile_order INTEGER NOT NULL,
+                    dimension_name VARCHAR,
+                    dimension_value VARCHAR,
+                    record_count BIGINT NOT NULL,
+                    column_order INTEGER NOT NULL,
+                    column_name VARCHAR NOT NULL,
+                    column_type VARCHAR NOT NULL,
+                    column_description VARCHAR NOT NULL,
+                    null_count BIGINT NOT NULL,
+                    null_rate DOUBLE NOT NULL,
+                    empty_string_count BIGINT NOT NULL,
+                    missing_count BIGINT NOT NULL,
+                    missing_rate DOUBLE NOT NULL,
+                    distinct_count BIGINT,
+                    distinct_ratio DOUBLE,
+                    min_value VARCHAR,
+                    max_value VARCHAR,
+                    true_count BIGINT
+                )
+            """)
+            if profile_rows:
+                connection.execute(
+                    f"COPY column_profiles FROM ? (FORMAT CSV, NULL '{null_sentinel}')",
+                    [str(profiles_csv)],
+                )
+            connection.execute("COPY models TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(models_path)])
+            connection.execute("COPY column_profiles TO ? (FORMAT PARQUET, COMPRESSION ZSTD)", [str(profiles_path)])
+            connection.execute("COMMIT")
+    finally:
+        models_csv.unlink(missing_ok=True)
+        profiles_csv.unlink(missing_ok=True)
 
     return models_path, profiles_path
+
+
+def _write_csv_rows(path: Path, rows: list[tuple], null_sentinel: str) -> None:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerows(
+            [null_sentinel if value is None else value for value in row]
+            for row in rows
+        )
 
 
 def _replace_storage_files(files: tuple[tuple[Path, Path], ...], stage_dir: Path) -> None:
