@@ -9,7 +9,8 @@ from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, Pro
 MAX_RESULT_ROWS = 100_000
 
 
-SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL", "DATE"}
+TEMPORAL_TYPES = {"DATE", "DATETIME", "TIMESTAMP"}
+SUPPORTED_TYPES = {"STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL", *TEMPORAL_TYPES}
 
 
 def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> str:
@@ -40,9 +41,10 @@ ORDER BY column_order
     dimension_column = next((column for column in model.columns if column.name == dimension), None)
     if dimension_column is None:
         raise ResultValidationError(f"dimension column not found: {dimension}")
-    if dimension_column.data_type not in {"DATE", "STRING"}:
+    if dimension_column.data_type not in {*TEMPORAL_TYPES, "STRING"}:
         raise ResultValidationError(
-            f"dimension must be DATE or STRING, got {dimension_column.data_type}"
+            "dimension must be DATE, DATETIME, TIMESTAMP or STRING, "
+            f"got {dimension_column.data_type}"
         )
 
     dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
@@ -181,12 +183,12 @@ def _aggregate_expressions(columns: list[ColumnMetadata], treat_empty_string_as_
         )
         expressions.append(
             f"CAST(MIN({quoted}) AS STRING) AS m{index}_min_value"
-            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "DATE"}
+            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", *TEMPORAL_TYPES}
             else f"CAST(NULL AS STRING) AS m{index}_min_value"
         )
         expressions.append(
             f"CAST(MAX({quoted}) AS STRING) AS m{index}_max_value"
-            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "DATE"}
+            if column.data_type in {"INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", *TEMPORAL_TYPES}
             else f"CAST(NULL AS STRING) AS m{index}_max_value"
         )
         expressions.append(

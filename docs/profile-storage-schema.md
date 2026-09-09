@@ -34,7 +34,7 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | columns_json | VARCHAR | No | profile未生成時にも表示するcolumn metadata |
 | profiling_json | VARCHAR | No | dbtで解決済みの`meta.profiling`設定 |
 | profiled_at | VARCHAR | Yes | profile実行日時のISO 8601文字列 |
-| profile_version | INTEGER | Yes | profile計算ロジックのversion。現在は2 |
+| profile_version | INTEGER | Yes | profile計算ロジックのversion。現在は4 |
 | upstream_ids_json | VARCHAR | No | dbtの直接依存先unique IDを格納したJSON array |
 
 `profiled_at`はParquetのtimestampへ変換せず、timezone offsetを失わないISO 8601文字列として保存する。dbt metadataだけをimportし、profileがまだ存在しないrelationではNULLにする。`profile_version`がない既存v1 storageはversion 1として読み取る。`upstream_ids_json`がない既存v1 storageは空配列として読み取り、次回importで補完する。
@@ -62,8 +62,8 @@ APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検�
 | missing_rate | DOUBLE | No | 0から1のMissing Rate |
 | distinct_count | BIGINT | Yes | STRING用 |
 | distinct_ratio | DOUBLE | Yes | STRING用。`distinct_count / record_count` |
-| min_value | VARCHAR | Yes | Numeric / DATE用 |
-| max_value | VARCHAR | Yes | Numeric / DATE用 |
+| min_value | VARCHAR | Yes | Numeric / DATE / DATETIME / TIMESTAMP用 |
+| max_value | VARCHAR | Yes | Numeric / DATE / DATETIME / TIMESTAMP用 |
 | true_count | BIGINT | Yes | BOOLEAN用 |
 
 Overall profileは次のように表現する。
@@ -82,7 +82,7 @@ dimension_value = "2026-08-30"
 
 `distinct_ratio`がない既存v1 storageは、読み取り時に`distinct_count / record_count`から補完する。空tableで`distinct_count=0`の場合は0とする。
 
-DATE columnがNULLのbucketは`dimension_name="event_date", dimension_value=NULL`として保存する。Overallとはdimension名で区別する。UIでは日付の並び・最新partitionから除外して別表示する。
+Temporal columnがNULLのbucketは`dimension_name="event_date", dimension_value=NULL`として保存する。Overallとはdimension名で区別する。UIでは時系列の並び・最新partitionから除外して別表示する。
 
 ## 互換性と再生成
 
@@ -100,12 +100,14 @@ version列のない既存ファイルは旧形式として扱う。旧形式は`
 
 ## min_value / max_value
 
-Parquet columnは単一の物理型を必要とするが、Min / MaxはNumericとDATEの両方を格納する。このためMVPではVARCHARとして保存し、repositoryが`column_type`に応じてAPI型へ復元する。
+Parquet columnは単一の物理型を必要とするが、Min / MaxはNumericとTemporal型の両方を格納する。このためVARCHARとして保存し、repositoryが`column_type`に応じてAPI型へ復元する。
 
 - INT64: `int`
 - FLOAT64: `float`
 - NUMERIC / BIGNUMERIC: 精度を保持する10進文字列
 - DATE: ISO date string
+- DATETIME: BigQueryの文字列表現
+- TIMESTAMP: BigQueryの文字列表現（timezoneを含む）
 - その他: string
 
 ## 書き換え方針

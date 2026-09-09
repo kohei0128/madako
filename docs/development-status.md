@@ -20,8 +20,8 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 |---|---|---|
 | dbt import | project内のmodels / sources / columns / tests / direct dependencies、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
 | 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
-| Profiling | OverallとDATE / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
-| 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE、INTEGER / FLOAT / BOOLEANの正規化 | TIMESTAMP、複合型などは除外 |
+| Profiling | OverallとDATE / DATETIME / TIMESTAMP / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
+| 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE / DATETIME / TIMESTAMP、INTEGER / FLOAT / BOOLEANの正規化 | 複合型などは除外 |
 | 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
@@ -47,8 +47,8 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 
 - Columns一覧を主役にし、常設のColumn Detailパネルは置かない。
 - Profile Byは1つの値へのfilterではなく、dimension valuesの比較軸とする。
-- DATEはheatmapと最新・previous partitionを表示する。Latest 30 / 90は保存された日付bucket数で、暦日数ではない。
-- DATEのNULL bucketは日付の並び・最新partitionから外し、別の表で表示する。
+- DATE / DATETIME / TIMESTAMPはheatmapと最新・previous partitionを表示する。Latest 30 / 90は保存された時系列bucket数で、暦日数や経過時間ではない。
+- Temporal dimensionのNULL bucketは時系列の並び・最新partitionから外し、別の表で表示する。
 - STRING dimensionはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。

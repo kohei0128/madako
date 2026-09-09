@@ -22,7 +22,7 @@ wheelを生成でき、`DataProfile`を公開入口として利用できる。�
 
 - dbt artifact importと`meta.profiling`設定
 - BigQuery SQL生成、dry run、queryごとの処理量上限
-- Overall / DATE dimension / Missing metricsの保存と表示
+- Overall / DATE / DATETIME / TIMESTAMP dimension / Missing metricsの保存と表示
 - Parquet / DuckDB、FastAPI、React
 - 公開Python APIとCLIのplan / run共通化
 

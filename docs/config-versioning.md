@@ -147,7 +147,7 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
 
 ## 4. Profile Computation Version
 
-現在のversionは**3**。version 2でNUMERIC / BIGNUMERICのMin / Max profilingを追加し、version 3でSTRING dimensionとDistinct ratioを追加した。
+現在のversionは**4**。version 2でNUMERIC / BIGNUMERICのMin / Max profilingを追加し、version 3でSTRING dimensionとDistinct ratio、version 4でDATETIME / TIMESTAMPのMin / Maxとdimension profilingを追加した。
 
 profile保存時に`models.parquet.profile_version`へ記録する。dbt artifactの再import時は、保存済みversionが現在の`PROFILE_COMPUTATION_VERSION`と一致する場合だけ既存profileを引き継ぐ。`profile_version`列がない既存v1 storageはversion 1として読み取るため、今回の変更後は再profileされる。
 

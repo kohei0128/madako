@@ -94,6 +94,18 @@ test("shows distinct count and ratio for string columns", async ({ page }) => {
   await expect(category.locator(".value-cell").nth(1)).toHaveText("20.0%");
 });
 
+test("shows date, datetime and timestamp columns in the date/time filter", async ({ page }) => {
+  await page.locator(".type-tabs").getByRole("button", { name: "Date/Time" }).click();
+
+  const rows = page.locator("tbody tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.locator(".column-name strong")).toHaveText([
+    "event_date", "created_at", "received_at",
+  ]);
+  await expect(rows.locator(".value-cell").first()).toHaveText("2026-08-31");
+  await expect(rows.locator(".value-cell").last()).toHaveText("2026-09-01 09:30:00+00");
+});
+
 test("shows and navigates direct upstream and downstream lineage", async ({ page }) => {
   const lineage = page.getByLabel("Direct lineage");
   await expect(lineage.getByText("3 upstream · 1 downstream")).toBeVisible();

@@ -126,6 +126,40 @@ def test_numeric_values_and_profile_version_round_trip(tmp_path: Path) -> None:
     assert loaded.profiles[0].columns[0].max_value == numeric.profiles[0].columns[0].max_value
 
 
+def test_datetime_and_timestamp_values_round_trip(tmp_path: Path) -> None:
+    from data_profile.models import ColumnProfile, ProfileSlice
+
+    values = [
+        ("created_at", "DATETIME", "2026-09-09 12:34:56.123456"),
+        ("received_at", "TIMESTAMP", "2026-09-09 03:34:56.123456+00"),
+    ]
+    temporal = model("temporal").model_copy(update={
+        "columns": [ColumnMetadata(name=name, data_type=data_type) for name, data_type, _ in values],
+        "profile_version": 4,
+        "profiles": [ProfileSlice(
+            record_count=1,
+            columns=[ColumnProfile(
+                name=name,
+                data_type=data_type,
+                null_count=0,
+                null_rate=0,
+                min_value=value,
+                max_value=value,
+            ) for name, data_type, value in values],
+        )],
+    })
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([temporal])
+    loaded = storage.load()[0]
+
+    assert loaded.profile_version == 4
+    assert [(column.data_type, column.min_value, column.max_value)
+            for column in loaded.profiles[0].columns] == [
+        (data_type, value, value) for _, data_type, value in values
+    ]
+
+
 def test_storage_without_profile_version_loads_as_version_one(tmp_path: Path) -> None:
     import duckdb
     from data_profile.sample import sample_models
