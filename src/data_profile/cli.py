@@ -3,6 +3,7 @@ from pathlib import Path
 
 from data_profile.api import DataProfile, ProfilePlan
 from data_profile.config import load_config
+from data_profile.planning import ProfileProgress
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
@@ -20,6 +21,64 @@ def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
         if show_sql:
             print("  SQL:")
             print(item.sql)
+
+
+def _profile_label(progress: ProfileProgress) -> str:
+    model = progress.model or (progress.item.model if progress.item else None)
+    relation = model.unique_id if model else "profile"
+    return f"{relation} / {progress.dimension or 'Overall'}"
+
+
+def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> None:
+    position = f"{progress.current}/{progress.total}"
+    label = _profile_label(progress)
+    if progress.event == "estimate_started":
+        print(f"[PLAN {position}] Checking query cost: {label}", flush=True)
+    elif progress.event == "estimate_completed":
+        item = progress.item
+        assert item is not None
+        status = "READY" if item.executable else "BLOCKED"
+        print(
+            f"[{status} {position}] {label} · "
+            f"{item.estimated_bytes:,} / {item.max_bytes_billed:,} bytes",
+            flush=True,
+        )
+        if item.skipped_columns:
+            print(f"  Unsupported columns omitted: {', '.join(item.skipped_columns)}", flush=True)
+    elif progress.event == "estimate_failed":
+        print(f"[FAILED {position}] Could not plan {label} · {progress.error}", flush=True)
+    elif progress.event == "execute_started":
+        print(f"[RUN {position}] Querying: {label}", flush=True)
+    elif progress.event == "execute_completed":
+        result = progress.result
+        assert result is not None
+        if result.status == "succeeded":
+            print(f"[DONE {position}] {label} · {result.row_count:,} metric rows", flush=True)
+        else:
+            print(f"[FAILED {position}] {label} · {result.error}", flush=True)
+    elif progress.event == "execute_skipped":
+        result = progress.result
+        assert result is not None
+        if result.skip_reason == "max_dimension_values":
+            print(
+                f"[SKIPPED {position}] {label} · {result.distinct_values:,} distinct values "
+                f"exceeds the {result.maximum_allowed:,} limit",
+                flush=True,
+            )
+        else:
+            print(f"[SKIPPED {position}] {label} · {result.error}", flush=True)
+    elif progress.event == "storage_started":
+        print("[SAVE] All queries finished; updating profile storage", flush=True)
+    elif progress.event == "storage_completed":
+        print(f"[SAVED] Updated storage: {storage_dir}", flush=True)
+    elif progress.event == "storage_discarded":
+        print(
+            f"[ABORTED] Storage unchanged; discarded results from "
+            f"{progress.current:,} completed queries",
+            flush=True,
+        )
+    elif progress.event == "storage_failed":
+        print(f"[FAILED] Could not update storage · {progress.error}", flush=True)
 
 
 def main() -> None:
@@ -108,31 +167,27 @@ def main() -> None:
         _print_plan(plan_result, show_sql=args.show_sql)
     elif args.command == "profile":
         storage_dir = args.storage_dir or config.storage_dir
+        print(f"[IMPORT] Reading dbt artifacts from {config.dbt_project_dir}", flush=True)
         data_profile = DataProfile.from_dbt_project(
             config.dbt_project_dir,
             storage_dir,
         )
-        print(f"Imported dbt artifacts from {config.dbt_project_dir}")
+        print("[IMPORTED] dbt artifacts are ready", flush=True)
+        def report_progress(event: ProfileProgress) -> None:
+            _print_profile_progress(event, data_profile.storage_dir)
+
         plan_result = data_profile.plan(
             select=args.select,
             project=args.project or config.bigquery_project,
             location=args.location or config.location,
+            progress=report_progress,
         )
-        _print_plan(plan_result)
-        result = data_profile.run(plan_result)
-        for item_result in result.items:
-            if item_result.skip_reason == "max_dimension_values":
-                print(f"[SKIPPED] {item_result.item.model.name}.{item_result.item.dimension}")
-                print("  Dimension profiling skipped")
-                print(f"  Distinct values: {item_result.distinct_values:,}")
-                print(f"  Maximum allowed: {item_result.maximum_allowed:,}")
-                continue
-            label = item_result.item.dimension or "Overall"
-            detail = f" · {item_result.error}" if item_result.error else f" · {item_result.row_count:,} rows"
-            print(f"[{item_result.status.upper()}] {item_result.item.model.name} / {label}{detail}")
+        result = data_profile.run(plan_result, progress=report_progress)
         if not result.successful:
             raise SystemExit(1)
-        print(f"Profiled models: {', '.join(result.profiled_models)}")
         executed = sum(item.status == "succeeded" for item in result.items)
-        print(f"Executed profile items: {executed:,}")
-        print(f"Updated storage: {data_profile.storage_dir}")
+        print(
+            f"[COMPLETE] Profiled {len(result.profiled_models):,} models "
+            f"with {executed:,} queries",
+            flush=True,
+        )

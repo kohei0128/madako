@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from data_profile import DataProfile, ProfilePlan, ProfileResult
+from data_profile import DataProfile, ProfilePlan, ProfileProgress, ProfileResult
 from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from data_profile.storage import write_profile_storage
 
@@ -142,6 +142,29 @@ def test_cardinality_skip_is_successful_and_saves_overall_profile(tmp_path: Path
     assert [profile.dimension_name for profile in DataProfile(tmp_path).models()[0].profiles] == [None]
 
 
+def test_profile_reports_planning_execution_and_storage_progress(tmp_path: Path) -> None:
+    write_profile_storage([configured_model()], tmp_path)
+    events: list[ProfileProgress] = []
+
+    result = DataProfile(
+        tmp_path,
+        estimator=lambda *_: 1_000,
+        runner=lambda sql, *_: rows_for_sql(sql),
+    ).profile(select="events", progress=events.append)
+
+    assert result.successful
+    assert [event.event for event in events] == [
+        "estimate_started", "estimate_completed",
+        "estimate_started", "estimate_completed",
+        "execute_started", "execute_completed",
+        "execute_started", "execute_completed",
+        "storage_started", "storage_completed",
+    ]
+    assert [(event.current, event.total) for event in events[:4]] == [
+        (1, 2), (1, 2), (2, 2), (2, 2),
+    ]
+
+
 def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) -> None:
     write_profile_storage([configured_model()], tmp_path)
     models_before = (tmp_path / "models.parquet").read_bytes()
@@ -152,13 +175,16 @@ def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) 
         runner=lambda *_: (_ for _ in ()).throw(RuntimeError("warehouse unavailable")),
     )
 
-    result = app.profile(select="events")
+    events: list[ProfileProgress] = []
+    result = app.profile(select="events", progress=events.append)
 
     assert result.successful is False
     assert result.storage_updated is False
     assert result.profiled_models == ()
     assert result.failed[0].error == "warehouse unavailable"
     assert len(result.skipped) == 1
+    assert events[-1].event == "storage_discarded"
+    assert events[-1].current == 0
     assert (tmp_path / "models.parquet").read_bytes() == models_before
     assert (tmp_path / "column_profiles.parquet").read_bytes() == profiles_before
 
@@ -185,13 +211,16 @@ def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_row
 
     adapter = FakeWarehouse()
     app = DataProfile.from_storage(tmp_path, adapter=adapter)
-    result = app.profile(project="billing", location="US")
+    events: list[ProfileProgress] = []
+    result = app.profile(project="billing", location="US", progress=events.append)
     assert [item.status for item in result.items] == ["succeeded", "failed"] + ["skipped"] * 4
     assert adapter.calls == 2
     assert not result.storage_updated
     assert not result.successful
     assert result.profiled_models == ()
     assert result.failed[0].error
+    assert events[-1].event == "storage_discarded"
+    assert events[-1].current == 1
     assert [path.read_bytes() for path in paths] == before
 
 

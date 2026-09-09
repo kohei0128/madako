@@ -5,7 +5,16 @@ from pydantic import BaseModel, Field
 from data_profile.exceptions import DataProfileError, PlanningError, StorageOperationError
 from data_profile.warehouse import WarehouseAdapter, complete_adapter
 from data_profile.models import ModelProfile
-from data_profile.planning import Estimator, ProfileItemResult, ProfilePlanItem, Runner, create_profile_plan, execute_profile_plan
+from data_profile.planning import (
+    Estimator,
+    ProfileItemResult,
+    ProfilePlanItem,
+    ProfileProgress,
+    ProgressCallback,
+    Runner,
+    create_profile_plan,
+    execute_profile_plan,
+)
 from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
 
 
@@ -144,6 +153,7 @@ class DataProfile:
         select: str | None = None,
         project: str | None = None,
         location: str = "asia-northeast1",
+        progress: ProgressCallback | None = None,
     ) -> ProfilePlan:
         items = create_profile_plan(
             self.models(),
@@ -152,10 +162,16 @@ class DataProfile:
             location=location,
             adapter=self._adapter,
             estimator=self._estimator,
+            progress=progress,
         )
         return ProfilePlan(items=tuple(items))
 
-    def run(self, plan: ProfilePlan) -> ProfileResult:
+    def run(
+        self,
+        plan: ProfilePlan,
+        *,
+        progress: ProgressCallback | None = None,
+    ) -> ProfileResult:
         if not plan.items:
             raise PlanningError("cannot run an empty profile plan")
         models = self.models()
@@ -164,10 +180,36 @@ class DataProfile:
             list(plan.items),
             adapter=self._adapter,
             runner=self._runner,
+            progress=progress,
         )
         models_path, profiles_path = self._storage.paths
         if execution.complete:
-            models_path, profiles_path = self._save(execution.models)
+            if progress is not None:
+                progress(ProfileProgress(
+                    event="storage_started",
+                    current=len(execution.results), total=len(execution.results),
+                ))
+            try:
+                models_path, profiles_path = self._save(execution.models)
+            except Exception as error:
+                if progress is not None:
+                    progress(ProfileProgress(
+                        event="storage_failed",
+                        current=len(execution.results), total=len(execution.results),
+                        error=str(error),
+                    ))
+                raise
+            if progress is not None:
+                progress(ProfileProgress(
+                    event="storage_completed",
+                    current=len(execution.results), total=len(execution.results),
+                ))
+        elif progress is not None:
+            progress(ProfileProgress(
+                event="storage_discarded",
+                current=sum(item.status == "succeeded" for item in execution.results),
+                total=len(execution.results),
+            ))
         profiled_models = (
             tuple(dict.fromkeys(item.model.name for item in plan.items))
             if execution.complete else ()
@@ -187,5 +229,9 @@ class DataProfile:
         select: str | None = None,
         project: str | None = None,
         location: str = "asia-northeast1",
+        progress: ProgressCallback | None = None,
     ) -> ProfileResult:
-        return self.run(self.plan(select=select, project=project, location=location))
+        return self.run(
+            self.plan(select=select, project=project, location=location, progress=progress),
+            progress=progress,
+        )

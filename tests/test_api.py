@@ -11,6 +11,7 @@ from pydantic import ValidationError
 from data_profile.api import DataProfile
 from data_profile.cli import main as cli_main
 from data_profile.models import ColumnMetadata, ColumnProfile, ProfileSlice
+from data_profile.planning import ProfileProgress
 from data_profile.server import create_app
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
 from data_profile.sample import sample_models
@@ -232,7 +233,7 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     plan = SimpleNamespace(items=())
     skipped = SimpleNamespace(
         item=SimpleNamespace(
-            model=SimpleNamespace(name="events"),
+            model=SimpleNamespace(name="events", unique_id="model.demo.events"),
             dimension="user_id",
         ),
         status="skipped",
@@ -247,10 +248,28 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         profiled_models=(),
         plan=plan,
     )
+
+    def plan_profiles(*, progress, **kwargs):
+        calls.append(("plan", kwargs))
+        return plan
+
+    def run_profiles(received_plan, *, progress):
+        calls.append(("run", received_plan))
+        progress(ProfileProgress(
+            event="execute_skipped",
+            current=1,
+            total=1,
+            model=skipped.item.model,
+            dimension=skipped.item.dimension,
+            item=skipped.item,
+            result=skipped,
+        ))
+        return result
+
     app = SimpleNamespace(
         storage_dir=storage_dir,
-        plan=lambda **kwargs: calls.append(("plan", kwargs)) or plan,
-        run=lambda received_plan: calls.append(("run", received_plan)) or result,
+        plan=plan_profiles,
+        run=run_profiles,
     )
 
     def import_dbt(
@@ -273,10 +292,10 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     )
     assert calls[2] == ("run", plan)
     output = capsys.readouterr().out
-    assert "[SKIPPED] events.user_id" in output
-    assert "Dimension profiling skipped" in output
-    assert "Distinct values: 1,284,392" in output
-    assert "Maximum allowed: 10,000" in output
+    assert "[IMPORT] Reading dbt artifacts" in output
+    assert "[SKIPPED 1/1] model.demo.events / user_id" in output
+    assert "1,284,392 distinct values exceeds the 10,000 limit" in output
+    assert "[COMPLETE] Profiled 0 models with 0 queries" in output
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
