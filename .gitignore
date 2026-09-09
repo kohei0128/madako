@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 web/node_modules/
 web/.npm-cache/
+web/.playwright-deps/
 web/dist/
 web/.e2e-data/
 web/test-results/

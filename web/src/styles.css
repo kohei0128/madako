@@ -34,9 +34,9 @@ header { max-width: 1400px; }
 h1 { font-size: 25px; letter-spacing: -.035em; margin: 0; }
 .pill { color: #176846; background: #dcf3e8; border-radius: 20px; font-size: 9px; font-weight: 700; padding: 3px 7px; }
 header p { color: #5f6e69; font-size: 12px; margin: 7px 0 10px; }
-.metadata { display: flex; gap: 20px; color: #6d7c77; font-size: 10px; }
+.metadata { display: flex; align-items: baseline; gap: 20px; min-height: 14px; color: #6d7c77; font-size: 10px; line-height: 14px; }
 .metadata b { color: #24332e; }
-.latest-partition { display: inline-flex; align-items: baseline; gap: 7px; margin-top: 9px; padding-left: 9px; border-left: 2px solid #7ba994; }
+.latest-partition { display: inline-flex; align-items: baseline; gap: 7px; padding-left: 9px; border-left: 2px solid #7ba994; white-space: nowrap; }
 .latest-partition span { color: #788681; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
 .latest-partition strong { color: #263630; font-size: 11px; }
 .latest-partition small { color: #6f7d78; font-size: 9px; }
