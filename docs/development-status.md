@@ -1,6 +1,6 @@
 # Madako 開発状況
 
-最終更新: 2026-09-09
+最終更新: 2026-09-10
 
 プロダクトの目的とMVP範囲は[要件定義](product-requirements.md)、開発順序と完了条件は[Roadmap](roadmap.md)、操作手順は[README](../README.md)、保存契約と復旧手順は[Storage Schema](profile-storage-schema.md)を参照する。この文書は現在の実装と残る制限を扱う。
 
@@ -9,9 +9,9 @@
 experimentalな0.1 Python APIとローカルWebアプリを実装済み。
 
 ```text
-dbt artifacts → DataProfile.plan() → BigQuery dry run
+dbt artifacts → DataProfile.plan() → optional BigQuery dry run
                        ↓
-                DataProfile.run()
+                DataProfile.run() → BigQuery job usage
                        ↓
            Parquet / DuckDB → FastAPI → React
 ```
@@ -19,10 +19,10 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 | 領域 | 実装済み | 残る制限 |
 |---|---|---|
 | dbt import | project内のmodels / sources / columns / tests / direct dependencies、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
-| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、queryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
+| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、任意のqueryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE / DATETIME / TIMESTAMP / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE / DATETIME / TIMESTAMP、INTEGER / FLOAT / BOOLEANの正規化 | 複合型などは除外 |
-| 実行 | 全対象dry run、上限超過時は全skip、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeout・job IDは未対応 |
+| 実行 | max_bytes_billed指定relationのdry run、上限超過時は全skip、実行後の処理・課金bytes表示、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeoutは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
 | Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、CSV一括ロード、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
 | Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh、直接の上流・下流lineage。同梱UIを`madako serve`でAPIと同一portから配信 | 対応ブラウザはCIで検証するChromiumのみ |
@@ -30,7 +30,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 
 ## 実行と保存の保証
 
-- `plan()`はSQLとdry-run推定を作成する。曖昧な名前のselectionは拒否し、`unique_id`の指定を要求する。
+- `plan()`はSQLを作成し、`max_bytes_billed`が指定されたrelationだけdry-run推定を行う。曖昧な名前のselectionは拒否し、`unique_id`の指定を要求する。
 - `run()`は対象relationの存在と、plan作成時のschema・設定を実query前に確認する。変更済みなら再planを要求する。
 - query結果では、Overallの存在、slice内のカラム集合・型・重複、件数・率、dimension bucketの行数合計を検証する。
 - STRING dimensionはOverallの`distinct_count`を使い、`max_dimension_values`超過時はそのdimensionだけをスキップする。判定専用queryは発行しない。
@@ -52,7 +52,7 @@ dbt artifacts → DataProfile.plan() → BigQuery dry run
 - STRING dimensionはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。
-- `madako profile`はdbt artifact取込、各queryのdry run、実行、保存を逐次表示する。途中失敗時は完了済みの一時結果を破棄し、storageを更新しなかったことを明示する。
+- `madako profile`はdbt artifact取込、設定されたqueryのdry run、実行、処理・課金bytes、保存を逐次表示する。途中失敗時は完了済みの一時結果を破棄し、storageを更新しなかったことを明示する。
 - Lineageは詳細画面の末尾に上流・選択relation・下流を横並びで表示し、dbtのdirect dependencyだけを辿る。表示中のrelationへ画面内で移動できる。
 - UI操作からBigQuery queryは発行しない。
 

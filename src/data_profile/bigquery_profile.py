@@ -1,9 +1,11 @@
 import json
 import subprocess
 from math import isclose
+from uuid import uuid4
 
 from data_profile.exceptions import ProfilingError, ResultValidationError, WarehouseError
 from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
+from data_profile.warehouse import QueryExecution
 
 
 MAX_RESULT_ROWS = 100_000
@@ -84,17 +86,39 @@ def dry_run(sql: str, project: str, location: str) -> int:
     return estimate
 
 
-def execute_profile(sql: str, project: str, location: str, max_bytes_billed: int) -> list[dict]:
-    payload = _run_bq([
-        "bq", "query", f"--project_id={project}", f"--location={location}",
-        "--use_legacy_sql=false", f"--maximum_bytes_billed={max_bytes_billed}",
-        "--format=json", f"--max_rows={MAX_RESULT_ROWS}", sql,
-    ])
+def execute_profile(
+    sql: str, project: str, location: str, max_bytes_billed: int | None,
+) -> QueryExecution:
+    job_id = f"madako_{uuid4().hex}"
+    command = [
+        "bq", f"--job_id={job_id}", "query", f"--project_id={project}",
+        f"--location={location}", "--use_legacy_sql=false",
+    ]
+    if max_bytes_billed is not None:
+        command.append(f"--maximum_bytes_billed={max_bytes_billed}")
+    command.extend(["--format=json", f"--max_rows={MAX_RESULT_ROWS}", sql])
+    payload = _run_bq(command)
     if not isinstance(payload, list):
         raise WarehouseError("unexpected BigQuery result")
     if len(payload) >= MAX_RESULT_ROWS:
         raise ResultValidationError("query result reached the row limit; refusing potentially truncated metrics")
-    return payload
+    job = _run_bq([
+        "bq", "show", "--job=true", f"--project_id={project}",
+        f"--location={location}", "--format=json", job_id,
+    ])
+    try:
+        query_statistics = job["statistics"]["query"]
+        bytes_processed = int(query_statistics["totalBytesProcessed"])
+        bytes_billed = int(query_statistics["totalBytesBilled"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise WarehouseError("query job did not return valid byte usage") from error
+    if bytes_processed < 0 or bytes_billed < 0:
+        raise WarehouseError("query job returned negative byte usage")
+    return QueryExecution(
+        rows=payload,
+        bytes_processed=bytes_processed,
+        bytes_billed=bytes_billed,
+    )
 
 
 def rows_to_profiles(

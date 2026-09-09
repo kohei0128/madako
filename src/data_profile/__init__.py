@@ -13,7 +13,7 @@ from data_profile.exceptions import (
     WarehouseError,
 )
 from data_profile.planning import ProfileItemResult, ProfileProgress
-from data_profile.warehouse import BigQueryAdapter, WarehouseAdapter
+from data_profile.warehouse import BigQueryAdapter, QueryExecution, WarehouseAdapter
 from data_profile.storage import ParquetProfileStorage, ProfileStorage, StorageRecoveryError
 
 __all__ = [
@@ -27,6 +27,7 @@ __all__ = [
     "ProfilePlan",
     "ProfileResult",
     "ProfileProgress",
+    "QueryExecution",
     "ProfileStorage",
     "ProfilingError",
     "ResultValidationError",

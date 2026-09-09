@@ -74,7 +74,8 @@ def test_complete_adapter_owns_query_and_result_contract(tmp_path, monkeypatch):
     result = app.profile()
 
     assert result.successful
-    assert [call[0] for call in calls] == ["build", "estimate", "execute", "parse"]
+    assert [call[0] for call in calls] == ["build", "execute", "parse"]
+    assert calls[1][-1] is None
     assert app.models()[0].profiles[0].columns[0].name == "payload"
 
 
@@ -109,7 +110,7 @@ def test_custom_adapter_planning_error_uses_public_exception(tmp_path):
         schema_name="dataset",
         materialization="table",
         columns=[ColumnMetadata(name="id", data_type="INT64")],
-        profiling=ProfilingConfig(enabled=True),
+        profiling=ProfilingConfig(enabled=True, max_bytes_billed=10_000),
     )
     write_profile_storage([model], tmp_path)
 

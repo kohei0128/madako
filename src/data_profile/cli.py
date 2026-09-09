@@ -8,14 +8,31 @@ from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
 
+def _format_bytes(value: int) -> str:
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    size = float(value)
+    unit = units[0]
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            break
+        size /= 1024
+    if unit == "B":
+        return f"{value:,} B"
+    return f"{size:,.1f} {unit}"
+
+
 def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
     for item in plan.items:
         status = "READY" if item.executable else "BLOCKED"
         print(f"[{status}] {item.model.unique_id}")
         print(f"  Relation: {item.model.relation_name}")
         print(f"  Dimension: {item.dimension or 'Overall'}")
-        print(f"  Estimated bytes: {item.estimated_bytes:,}")
-        print(f"  Maximum bytes billed: {item.max_bytes_billed:,}")
+        if item.estimated_bytes is None:
+            print("  Query cost check: disabled")
+        else:
+            assert item.max_bytes_billed is not None
+            print(f"  Estimated: {_format_bytes(item.estimated_bytes)}")
+            print(f"  Maximum billed: {_format_bytes(item.max_bytes_billed)}")
         if item.skipped_columns:
             print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
         if show_sql:
@@ -37,10 +54,13 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
     elif progress.event == "estimate_completed":
         item = progress.item
         assert item is not None
+        assert item.estimated_bytes is not None
+        assert item.max_bytes_billed is not None
         status = "READY" if item.executable else "BLOCKED"
         print(
             f"[{status} {position}] {label} · "
-            f"{item.estimated_bytes:,} / {item.max_bytes_billed:,} bytes",
+            f"{_format_bytes(item.estimated_bytes)} estimated / "
+            f"{_format_bytes(item.max_bytes_billed)} maximum",
             flush=True,
         )
         if item.skipped_columns:
@@ -53,7 +73,15 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
         result = progress.result
         assert result is not None
         if result.status == "succeeded":
-            print(f"[DONE {position}] {label} · {result.row_count:,} metric rows", flush=True)
+            usage = ""
+            if result.bytes_processed is not None:
+                usage = f" · {_format_bytes(result.bytes_processed)} processed"
+                if result.bytes_billed is not None:
+                    usage += f" / {_format_bytes(result.bytes_billed)} billed"
+            print(
+                f"[DONE {position}] {label} · {result.row_count:,} metric rows{usage}",
+                flush=True,
+            )
         else:
             print(f"[FAILED {position}] {label} · {result.error}", flush=True)
     elif progress.event == "execute_skipped":
@@ -106,7 +134,7 @@ def main() -> None:
     import_dbt = subparsers.add_parser("import-dbt", help="Import dbt artifacts into Parquet storage")
     import_dbt.add_argument("--project-dir", type=Path)
     import_dbt.add_argument("--output-dir", type=Path)
-    plan = subparsers.add_parser("plan", help="Resolve profiling config and dry-run generated SQL")
+    plan = subparsers.add_parser("plan", help="Resolve profiling config and generate SQL")
     plan.add_argument("--storage-dir", type=Path)
     plan.add_argument("--select")
     plan.add_argument("--project")

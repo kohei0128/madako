@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from data_profile import DataProfile, ProfilePlan, ProfileProgress, ProfileResult
+from data_profile import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution
 from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from data_profile.storage import write_profile_storage
 
@@ -149,7 +149,9 @@ def test_profile_reports_planning_execution_and_storage_progress(tmp_path: Path)
     result = DataProfile(
         tmp_path,
         estimator=lambda *_: 1_000,
-        runner=lambda sql, *_: rows_for_sql(sql),
+        runner=lambda sql, *_: QueryExecution(
+            rows=rows_for_sql(sql), bytes_processed=2_000, bytes_billed=10_485_760,
+        ),
     ).profile(select="events", progress=events.append)
 
     assert result.successful
@@ -163,6 +165,8 @@ def test_profile_reports_planning_execution_and_storage_progress(tmp_path: Path)
     assert [(event.current, event.total) for event in events[:4]] == [
         (1, 2), (1, 2), (2, 2), (2, 2),
     ]
+    completed = [event.result for event in events if event.event == "execute_completed"]
+    assert all(item is not None and item.bytes_processed == 2_000 for item in completed)
 
 
 def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) -> None:

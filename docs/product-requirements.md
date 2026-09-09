@@ -365,7 +365,7 @@ dbt run / dbt buildに近い操作感を目指す。
 2. profiling対象model/sourceを決定
 3. dimension設定を読み込む
 4. BigQuery向けprofiling SQLを生成
-5. query costを検証
+5. 上限が設定されたqueryのcostを検証
 6. BigQueryでprofiling queryを実行
 7. 結果をParquetへ保存
 8. UIが新しいprofiling結果を表示する
@@ -380,7 +380,7 @@ dbt run / dbt buildに近い操作感を目指す。
 
 > 勝手に高コストなqueryを実行しない。
 
-profiling queryに対して、ユーザーが最大処理量を設定できるようにする。これはqueryごとの上限であり、複数relation実行全体の予算上限ではない。
+profiling queryに対して、ユーザーが最大処理量を任意で設定できるようにする。これはqueryごとの上限であり、複数relation実行全体の予算上限ではない。未指定のrelationは事前のdry runを行わない。
 
 イメージ：
 
@@ -389,7 +389,7 @@ profiling:
   max_bytes_billed: 1000000000  # bytes、queryごとの上限
 ```
 
-上限を超えるqueryは実行しない。
+上限を指定したrelationではdry runを行い、上限を超えるqueryは実行しない。実行したqueryについては、完了後に処理bytesと課金bytesを表示する。
 
 可能であれば実行前に、
 
