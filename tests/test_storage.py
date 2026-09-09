@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from data_profile.models import ColumnMetadata, ModelProfile
+from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 from data_profile.storage import MODELS_FILENAME, PROFILES_FILENAME, write_profile_storage
 from data_profile.storage import ParquetProfileStorage
 
@@ -90,6 +90,44 @@ def test_same_name_relations_do_not_share_profiles(tmp_path: Path) -> None:
     assert repository.get_model(second.unique_id).profiles == []
     with pytest.raises(AmbiguousProfileError):
         repository.get_model("events")
+
+
+def test_csv_special_characters_round_trip_without_staging_files(tmp_path: Path) -> None:
+    special = 'comma, quote " and newline\n日本語'
+    expected = model(special).model_copy(
+        update={
+            "columns": [
+                ColumnMetadata(
+                    name="category", data_type="STRING", description=special
+                )
+            ],
+            "profiles": [
+                ProfileSlice(
+                    dimension_name="category",
+                    dimension_value=special,
+                    record_count=1,
+                    columns=[
+                        ColumnProfile(
+                            name="category",
+                            data_type="STRING",
+                            description=special,
+                            null_count=0,
+                            null_rate=0,
+                            distinct_count=1,
+                            min_value=special,
+                            max_value="",
+                        )
+                    ],
+                )
+            ],
+        }
+    )
+    storage = ParquetProfileStorage(tmp_path)
+
+    storage.save([expected])
+
+    assert storage.load() == [expected]
+    assert not list(tmp_path.rglob("*.csv"))
 
 
 def test_empty_storage_round_trip(tmp_path: Path) -> None:
