@@ -36,11 +36,51 @@ def test_string_can_be_used_as_dimension() -> None:
     assert "'category' AS dimension_name" in sql
 
 
-def test_non_date_or_string_dimension_is_rejected() -> None:
+def test_non_temporal_or_string_dimension_is_rejected() -> None:
     import pytest
 
-    with pytest.raises(ProfilingError, match="DATE or STRING"):
+    with pytest.raises(ProfilingError, match="DATE, DATETIME, TIMESTAMP or STRING"):
         generate_profile_sql(model(), "amount")
+
+
+def test_datetime_and_timestamp_generate_metrics_and_can_be_dimensions() -> None:
+    temporal_model = model().model_copy(update={"columns": [
+        ColumnMetadata(name="created_at", data_type="DATETIME"),
+        ColumnMetadata(name="received_at", data_type="TIMESTAMP"),
+    ]})
+
+    overall_sql = generate_profile_sql(temporal_model)
+
+    assert "CAST(MIN(`created_at`) AS STRING)" in overall_sql
+    assert "CAST(MAX(`created_at`) AS STRING)" in overall_sql
+    assert "CAST(MIN(`received_at`) AS STRING)" in overall_sql
+    assert "CAST(MAX(`received_at`) AS STRING)" in overall_sql
+    for dimension in ("created_at", "received_at"):
+        dimension_sql = generate_profile_sql(temporal_model, dimension)
+        assert f"CAST(`{dimension}` AS STRING) AS dimension_value" in dimension_sql
+        assert f"GROUP BY `{dimension}`" in dimension_sql
+
+    values = ["2026-09-09 12:34:56.123456", "2026-09-09 03:34:56.123456+00"]
+    rows = [{
+        "dimension_name": None,
+        "dimension_value": None,
+        "record_count": "1",
+        "column_order": str(order),
+        "column_name": column.name,
+        "column_type": column.data_type,
+        "null_count": "0",
+        "null_rate": "0",
+        "distinct_count": None,
+        "min_value": values[order],
+        "max_value": values[order],
+        "true_count": None,
+    } for order, column in enumerate(temporal_model.columns)]
+
+    columns = rows_to_profiles(temporal_model, rows, validate=True)[0].columns
+    assert [(column.data_type, column.min_value) for column in columns] == [
+        ("DATETIME", values[0]),
+        ("TIMESTAMP", values[1]),
+    ]
 
 
 def test_reconstructs_profile_slices() -> None:

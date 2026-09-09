@@ -22,7 +22,7 @@ wheelを生成でき、`DataProfile`を公開入口として利用できる。�
 
 - dbt artifact importと`meta.profiling`設定
 - BigQuery SQL生成、dry run、queryごとの処理量上限
-- Overall / DATE dimension / Missing metricsの保存と表示
+- Overall / DATE / DATETIME / TIMESTAMP dimension / Missing metricsの保存と表示
 - Parquet / DuckDB、FastAPI、React
 - 公開Python APIとCLIのplan / run共通化
 
@@ -85,7 +85,7 @@ Phase 3は設計・実装・テストまで完了。0.xライブラリとして�
 - ✅ core依存をPydantic / DuckDBに限定し、FastAPI / Uvicornを`web` extraへ分離。外部`bq` CLIとNode.jsの前提をREADMEへ明記
 - ✅ wheelのinstall・import・sample生成・読み取りを行うCI smoke test
 - ✅ repository外へコピーした最小dbt projectを、install済みwheelの公開APIで実行するsmoke test
-- ✅ Python 3.12 / 3.13のunit test、Web build、package build、install smokeを行うGitHub Actions workflow
+- ✅ Python 3.11 / 3.12 / 3.13のunit test、Web build、package build、install smokeを行うGitHub Actions workflow
 - ✅ Playwrightによる同名relation選択、Refresh、NULL bucket表示の自動テスト
 - ✅ GitHub Actionsの初回実行成功を確認
 - ✅ 配布package名と正式CLIを`madako`へ統一し、Web UIをwheelへ同梱して`madako serve`だけでAPIとUIを配信

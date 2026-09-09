@@ -6,15 +6,19 @@ type TypeFilter = "all" | "string" | "numeric" | "boolean" | "date";
 const typeFilters: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "All" }, { value: "string", label: "String" },
   { value: "numeric", label: "Numeric" }, { value: "boolean", label: "Boolean" },
-  { value: "date", label: "Date" },
+  { value: "date", label: "Date/Time" },
 ];
+
+function isTemporalType(dataType: string): boolean {
+  return ["DATE", "DATETIME", "TIMESTAMP"].includes(dataType);
+}
 
 function matchesType(column: ColumnProfile, filter: TypeFilter): boolean {
   if (filter === "all") return true;
   if (filter === "string") return column.data_type === "STRING";
   if (filter === "numeric") return ["INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC"].includes(column.data_type);
   if (filter === "boolean") return column.data_type === "BOOL";
-  return column.data_type === "DATE";
+  return isTemporalType(column.data_type);
 }
 
 function compareDecimalStrings(left: string, right: string): number {
@@ -129,11 +133,11 @@ function DimensionMetricSummary({ profiles, columnName, dimensionName }: { profi
   const maximums = points.flatMap(({ column }) => column.max_value === null ? [] : [column.max_value]);
   const exactDecimal = first.data_type === "NUMERIC" || first.data_type === "BIGNUMERIC";
   const min = minimums.length === 0 ? null
-    : first.data_type === "DATE" ? minimums.map(String).sort()[0]
+    : isTemporalType(first.data_type) ? minimums.map(String).sort()[0]
     : exactDecimal ? minimums.map(String).sort(compareDecimalStrings)[0]
     : Math.min(...minimums.map(Number));
   const max = maximums.length === 0 ? null
-    : first.data_type === "DATE" ? maximums.map(String).sort().at(-1)
+    : isTemporalType(first.data_type) ? maximums.map(String).sort().at(-1)
     : exactDecimal ? maximums.map(String).sort(compareDecimalStrings).at(-1)
     : Math.max(...maximums.map(Number));
   return <div className="dimension-summary"><strong>{String(min ?? "—")} → {String(max ?? "—")}</strong><small>Min / Max</small></div>;
@@ -176,7 +180,7 @@ function DimensionDetail({ profiles, columnName, dimensionName, includeEmpty, te
   };
   const compareValues = (left: string | number | boolean, right: string | number | boolean, key: DimensionSortKey): number => {
     if (key === "dimension") return String(left).localeCompare(String(right));
-    if ((key === "min" || key === "max") && first.data_type === "DATE") return String(left).localeCompare(String(right));
+    if ((key === "min" || key === "max") && isTemporalType(first.data_type)) return String(left).localeCompare(String(right));
     if ((key === "min" || key === "max") && (first.data_type === "NUMERIC" || first.data_type === "BIGNUMERIC")) return compareDecimalStrings(String(left), String(right));
     if (typeof left === "number" && typeof right === "number") return left - right;
     if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
@@ -398,7 +402,7 @@ function App() {
   )), [model]);
   const activeDimension = slice?.dimension_name ?? null;
   const dimensionSlices = model?.profiles.filter((profile) => profile.dimension_name === activeDimension) ?? [];
-  const temporalDimension = activeDimension !== null && (isTemporal(dimensionSlices) || Boolean(model?.columns.some((column) => column.name === activeDimension && column.data_type === "DATE")));
+  const temporalDimension = activeDimension !== null && (isTemporal(dimensionSlices) || Boolean(model?.columns.some((column) => column.name === activeDimension && isTemporalType(column.data_type))));
   const latestDimensionSlice = temporalDimension
     ? dimensionSlices.filter((profile) => profile.dimension_value !== null).sort((a, b) => (a.dimension_value ?? "").localeCompare(b.dimension_value ?? "")).at(-1)
     : undefined;
@@ -450,7 +454,7 @@ function App() {
     if (typeFilter === "string") return <tr><th>Column</th><th>{missingLabel}</th><th>Distinct</th><th>Distinct ratio</th></tr>;
     if (typeFilter === "numeric") return <tr><th>Column</th><th>Type</th><th>{missingLabel}</th><th>Min</th><th>Max</th></tr>;
     if (typeFilter === "boolean") return <tr><th>Column</th><th>{missingLabel}</th><th>TRUE</th></tr>;
-    if (typeFilter === "date") return <tr><th>Column</th><th>{missingLabel}</th><th>Min date</th><th>Max date</th></tr>;
+    if (typeFilter === "date") return <tr><th>Column</th><th>{missingLabel}</th><th>Min</th><th>Max</th></tr>;
     return <tr><th>Column</th><th>Type</th><th>{missingLabel}</th><th>Metrics</th></tr>;
   }
 

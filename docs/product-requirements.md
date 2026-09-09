@@ -166,11 +166,11 @@ MVPでは以下のみ対応する。
 * BIGNUMERIC
 * BOOLEAN / BOOL
 * DATE
+* DATETIME
+* TIMESTAMP
 
 MVPでは以下は必須対応としない。
 
-* TIMESTAMP
-* DATETIME
 * JSON
 * ARRAY
 * STRUCT / RECORD
@@ -243,7 +243,7 @@ FALSE Countは、
 
 ---
 
-## DATE
+## DATE / DATETIME / TIMESTAMP
 
 * NULL Count
 * NULL Rate
@@ -254,7 +254,7 @@ FALSE Countは、
 
 # 9. Dimension Profiling
 
-MVPの対象とする。DATEとSTRING dimensionのSQL生成・保存・表示に対応する。STRINGはOverallで得たDistinct数が設定上限を超える場合、そのdimensionだけをスキップする。
+MVPの対象とする。DATE、DATETIME、TIMESTAMPとSTRING dimensionのSQL生成・保存・表示に対応する。STRINGはOverallで得たDistinct数が設定上限を超える場合、そのdimensionだけをスキップする。
 
 テーブル全体のprofileだけでなく、
 

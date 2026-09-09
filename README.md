@@ -10,7 +10,7 @@ Madakoは、**dbtのドキュメントと実データの状態を一緒に見ら
 
 - dbtのモデル・ソース・カラム・説明・テストを一覧表示
 - 実データから行数、NULL率、Distinct数、Min / Maxなどを取得
-- DATEや低カーディナリティなSTRINGカラムごとの変化を比較
+- DATE / DATETIME / TIMESTAMPや低カーディナリティなSTRINGカラムごとの変化を比較
 - profiling対象とクエリごとの上限をdbtのYAMLで管理
 - 結果をローカルのParquetへ保存し、`madako serve`だけで閲覧
 
@@ -24,7 +24,7 @@ dbt artifacts + BigQuery
 
 ## まず画面を試す
 
-Python 3.12以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
+Python 3.11以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
 
 ```bash
 uv tool install 'madako[web] @ git+https://github.com/kohei0128/madako.git'
@@ -52,7 +52,7 @@ models:
           max_bytes_billed: 1000000000
 ```
 
-`dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATEまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
+`dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATE、DATETIME、TIMESTAMPまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
 
 ### 2. Madakoを設定する
 
@@ -116,9 +116,9 @@ madako profile --help
 - 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。
 - UIの操作だけでBigQueryへのクエリが発行されることはありません。
 
-対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATEです。
+対応型はSTRING、INT64、FLOAT64、NUMERIC、BIGNUMERIC、BOOL、DATE、DATETIME、TIMESTAMPです。
 
-OverallとDATE / STRING dimensionを生成できます。STRINGのDistinct数とDistinct ratioも表示します。DATEのNULL bucketは日付比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
+OverallとDATE / DATETIME / TIMESTAMP / STRING dimensionを生成できます。STRINGのDistinct数とDistinct ratioも表示します。Temporal dimensionのNULL bucketは時系列比較から分離して表示します。各relationの末尾では、dbtの直接依存から上流・下流1階層のlineageを確認できます。UIのRefreshで更新後のstorageを読み直せます。UI操作はBigQuery queryを発行しません。
 ## 現在の制約
 
 - BigQuery以外のwarehouseにはまだ対応していません。
@@ -163,8 +163,11 @@ Web UIを変更するときだけNode.jsが必要です。
 cd web
 npm ci
 npm run build
+npx playwright install --with-deps chromium
 npm run test:e2e
 ```
+
+既定の8000番portが使用中の場合は、`MADAKO_E2E_PORT=18000 npm run test:e2e`のようにE2E用portを変更できます。
 
 ## ドキュメント
 

@@ -5,12 +5,15 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 MetricValue = str | int | float | bool | date | None
-PROFILE_COMPUTATION_VERSION = 3
+PROFILE_COMPUTATION_VERSION = 4
 
 
 class ColumnProfile(BaseModel):
     name: str
-    data_type: Literal["STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL", "DATE"]
+    data_type: Literal[
+        "STRING", "INT64", "FLOAT64", "NUMERIC", "BIGNUMERIC", "BOOL",
+        "DATE", "DATETIME", "TIMESTAMP",
+    ]
     description: str = ""
     null_count: Annotated[int, Field(ge=0)]
     null_rate: Annotated[float, Field(ge=0, le=1)]
