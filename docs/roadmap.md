@@ -32,7 +32,8 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
 
 実装・ローカルテスト済み:
 
-- 全対象をdry runしてから実queryを開始し、上限超過時は全skip
+- max_bytes_billed指定対象をdry runしてから実queryを開始し、上限超過時は全skip
+- 実queryのjob統計から処理bytesと課金bytesを表示
 - relation / dimensionごとのSucceeded / Failed / Skipped
 - query・結果変換失敗時のfail-fast、全成功後に1回保存
 - 保存・参照・UI選択を`unique_id`で分離、曖昧な名前を拒否

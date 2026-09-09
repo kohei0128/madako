@@ -72,7 +72,7 @@ class ProfilingConfig(BaseModel):
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
     max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
-    max_bytes_billed: Annotated[int, Field(gt=0)] = 1_000_000_000
+    max_bytes_billed: Annotated[int, Field(gt=0)] | None = None
     treat_empty_string_as_null: bool = False
     # 新規追加（デフォルト値あり）
     trim_whitespace: bool = False  # 将来の機能例

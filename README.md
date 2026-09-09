@@ -49,7 +49,6 @@ models:
           enabled: true
           dimensions: [event_date, service]
           max_dimension_values: 10000
-          max_bytes_billed: 1000000000
           treat_empty_string_as_null: true
 ```
 
@@ -58,6 +57,16 @@ profiling設定を変更した後は、`dbt docs generate`と`madako profile`を
 `dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATE、DATETIME、TIMESTAMPまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
 
 `treat_empty_string_as_null: true`を指定すると、STRINGカラムの空文字（`''`）をNULLと合わせてMissingとして集計します。既定値は`false`で、その場合はNULLだけがMissingです。空白だけの文字列（例: `' '`）は空文字に含みません。
+
+事前にクエリ量を確認したいモデルやソースだけ、`max_bytes_billed`を指定します。指定したrelationでは実行前にdry runし、いずれかのクエリが上限を超える場合は実データへのクエリを開始しません。未指定の場合はdry runを省略します。
+
+```yaml
+config:
+  meta:
+    profiling:
+      enabled: true
+      max_bytes_billed: 1000000000
+```
 
 ### 2. Madakoを設定する
 
@@ -114,8 +123,9 @@ madako profile --help
 
 ## 安全性
 
-- 実行前に対象クエリをすべてdry runします。
-- `max_bytes_billed`を超えるクエリがあれば、実データへのクエリを開始しません。
+- `max_bytes_billed`を指定したrelationだけ、実行前に対象クエリをdry runします。
+- dry runしたクエリのいずれかが`max_bytes_billed`を超える場合は、実データへのクエリを開始しません。
+- 各クエリの完了後に、BigQueryが報告した処理bytesと課金bytesをログへ表示します。
 - STRING dimensionはOverallを先に実行し、追加クエリなしでDistinct数を確認してから実行します。
 - `max_dimension_values`を超えるSTRING dimensionは理由を表示してスキップし、他のprofileは継続します。
 - 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。

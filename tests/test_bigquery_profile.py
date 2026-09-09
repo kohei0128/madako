@@ -167,6 +167,56 @@ def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
         bq.execute_profile("sql", "project", "US", 1000)
 
 
+def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
+    from data_profile import bigquery_profile as bq
+
+    calls: list[list[str]] = []
+    responses = iter([
+        [{"record_count": "1"}],
+        {"statistics": {"query": {
+            "totalBytesProcessed": "123456",
+            "totalBytesBilled": "10485760",
+        }}},
+    ])
+
+    def run(command: list[str]):
+        calls.append(command)
+        return next(responses)
+
+    monkeypatch.setattr(bq, "_run_bq", run)
+    result = bq.execute_profile("SELECT 1", "project", "US", None)
+
+    assert result.rows == [{"record_count": "1"}]
+    assert result.bytes_processed == 123_456
+    assert result.bytes_billed == 10_485_760
+    assert calls[0][0] == "bq"
+    assert calls[0][1].startswith("--job_id=madako_")
+    assert not any(arg.startswith("--maximum_bytes_billed=") for arg in calls[0])
+    assert calls[1][-1] == calls[0][1].removeprefix("--job_id=")
+
+
+def test_execute_profile_applies_optional_maximum_bytes(monkeypatch) -> None:
+    from data_profile import bigquery_profile as bq
+
+    calls: list[list[str]] = []
+    responses = iter([
+        [],
+        {"statistics": {"query": {
+            "totalBytesProcessed": "0",
+            "totalBytesBilled": "0",
+        }}},
+    ])
+    monkeypatch.setattr(
+        bq,
+        "_run_bq",
+        lambda command: calls.append(command) or next(responses),
+    )
+
+    bq.execute_profile("SELECT 1", "project", "US", 1_000_000)
+
+    assert "--maximum_bytes_billed=1000000" in calls[0]
+
+
 def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
     import pytest
     from data_profile import bigquery_profile as bq

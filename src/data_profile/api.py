@@ -19,11 +19,12 @@ from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_d
 
 
 class ProfilePlan(BaseModel):
-    """Profile execution plan containing estimation and SQL for each dimension.
+    """Profile execution plan containing SQL and optional cost estimates.
 
     A plan contains one or more items, each representing a profiling query
     for a specific model/source and optional dimension. The plan can be
-    inspected before execution to verify cost estimates.
+    inspected before execution. Cost estimates are present only when the
+    relation config sets max_bytes_billed.
     """
 
     items: tuple[ProfilePlanItem, ...] = Field(
@@ -36,9 +37,11 @@ class ProfilePlan(BaseModel):
         return bool(self.items) and all(item.executable for item in self.items)
 
     @property
-    def estimated_bytes(self) -> int:
-        """Total estimated bytes to be processed across all items."""
-        return sum(item.estimated_bytes for item in self.items)
+    def estimated_bytes(self) -> int | None:
+        """Total estimated bytes, or None if any item skipped cost checking."""
+        if any(item.estimated_bytes is None for item in self.items):
+            return None
+        return sum(item.estimated_bytes or 0 for item in self.items)
 
     model_config = {"frozen": True}
 

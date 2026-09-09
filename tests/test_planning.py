@@ -45,6 +45,22 @@ def test_plan_resolves_config_and_estimates_cost() -> None:
     assert calls[0][1:] == ("project", "asia-northeast1")
 
 
+def test_plan_skips_cost_estimation_by_default() -> None:
+    model = configured_model().model_copy(update={
+        "profiling": ProfilingConfig(enabled=True),
+    })
+
+    plan = create_profile_plan(
+        [model],
+        estimator=lambda *_: (_ for _ in ()).throw(AssertionError("unexpected dry run")),
+    )
+
+    assert len(plan) == 1
+    assert plan[0].estimated_bytes is None
+    assert plan[0].max_bytes_billed is None
+    assert plan[0].executable
+
+
 def test_plan_supports_numeric_and_bignumeric_columns() -> None:
     model = configured_model().model_copy(update={"columns": [
         ColumnMetadata(name="amount", data_type="NUMERIC"),

@@ -3,17 +3,17 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from data_profile.exceptions import DataProfileError, PlanningError, ResultValidationError, WarehouseError
 from data_profile.models import PROFILE_COMPUTATION_VERSION, ModelProfile
-from data_profile.warehouse import WarehouseAdapter, complete_adapter
+from data_profile.warehouse import QueryExecution, WarehouseAdapter, complete_adapter
 
 
 class ProfilePlanItem(BaseModel):
     """Plan item for a single relation and dimension profile query.
 
-    Contains the SQL query, cost estimation, and configuration for profiling
+    Contains the SQL query, optional cost estimation, and configuration for profiling
     a specific model or source with an optional dimension breakdown.
     """
 
@@ -22,24 +22,37 @@ class ProfilePlanItem(BaseModel):
     sql: str = Field(description="Generated SQL query for profiling")
     project: str = Field(description="BigQuery project ID to execute the query")
     location: str = Field(description="BigQuery location/region for query execution")
-    estimated_bytes: Annotated[int, Field(ge=0)] = Field(description="Estimated bytes to be processed")
-    max_bytes_billed: Annotated[int, Field(gt=0)] = Field(description="Maximum allowed bytes to process")
+    estimated_bytes: Annotated[int, Field(ge=0)] | None = Field(
+        default=None, description="Estimated bytes, or None when cost checking is disabled"
+    )
+    max_bytes_billed: Annotated[int, Field(gt=0)] | None = Field(
+        default=None, description="Maximum bytes to process, or None when cost checking is disabled"
+    )
     skipped_columns: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Column names skipped due to unsupported data types"
     )
     model_signature: str = Field(default="", description="Hash of model config for staleness detection")
 
+    @model_validator(mode="after")
+    def validate_cost_check(self) -> "ProfilePlanItem":
+        if (self.estimated_bytes is None) != (self.max_bytes_billed is None):
+            raise ValueError("estimated_bytes and max_bytes_billed must both be set or both be None")
+        return self
+
     @property
     def executable(self) -> bool:
         """Query is within the configured max_bytes_billed limit."""
+        if self.estimated_bytes is None:
+            return True
+        assert self.max_bytes_billed is not None
         return self.estimated_bytes <= self.max_bytes_billed
 
     model_config = {"frozen": True}
 
 
 Estimator = Callable[[str, str, str], int]
-Runner = Callable[[str, str, str, int], list[dict]]
+Runner = Callable[[str, str, str, int | None], QueryExecution | list[dict]]
 
 
 class ProfileItemResult(BaseModel):
@@ -58,6 +71,8 @@ class ProfileItemResult(BaseModel):
     )
     distinct_values: Annotated[int | None, Field(ge=0)] = None
     maximum_allowed: Annotated[int | None, Field(gt=0)] = None
+    bytes_processed: Annotated[int | None, Field(ge=0)] = None
+    bytes_billed: Annotated[int | None, Field(ge=0)] = None
 
     model_config = {"frozen": True}
 
@@ -134,13 +149,15 @@ def create_profile_plan(
     for index, (model, dimension) in enumerate(targets, start=1):
         skipped = tuple(column.name for column in model.columns if column.data_type not in supported_types)
         query_project = project or model.database
-        _notify(progress, ProfileProgress(
-            event="estimate_started", current=index, total=len(targets),
-            model=model, dimension=dimension,
-        ))
         try:
             sql = warehouse.build_profile_query(model, dimension)
-            estimated = estimate(sql, query_project, location)
+            estimated = None
+            if model.profiling.max_bytes_billed is not None:
+                _notify(progress, ProfileProgress(
+                    event="estimate_started", current=index, total=len(targets),
+                    model=model, dimension=dimension,
+                ))
+                estimated = estimate(sql, query_project, location)
         except DataProfileError as error:
             _notify(progress, ProfileProgress(
                 event="estimate_failed", current=index, total=len(targets),
@@ -168,10 +185,11 @@ def create_profile_plan(
             model_signature=model.profiling_signature(),
         )
         plan.append(item)
-        _notify(progress, ProfileProgress(
-            event="estimate_completed", current=index, total=len(targets),
-            model=model, dimension=dimension, item=item,
-        ))
+        if model.profiling.max_bytes_billed is not None:
+            _notify(progress, ProfileProgress(
+                event="estimate_completed", current=index, total=len(targets),
+                model=model, dimension=dimension, item=item,
+            ))
     return plan
 
 
@@ -261,7 +279,15 @@ def execute_profile_plan(
             model=item.model, dimension=item.dimension, item=item,
         ))
         try:
-            rows = execute(item.sql, item.project, item.location, item.max_bytes_billed)
+            execution = execute(item.sql, item.project, item.location, item.max_bytes_billed)
+            if isinstance(execution, QueryExecution):
+                rows = execution.rows
+                bytes_processed = execution.bytes_processed
+                bytes_billed = execution.bytes_billed
+            else:
+                rows = execution
+                bytes_processed = None
+                bytes_billed = None
             profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
             overall = [profile for profile in profiles if profile.dimension_name is None]
             dimensions = [profile for profile in profiles if profile.dimension_name is not None]
@@ -300,7 +326,13 @@ def execute_profile_plan(
                 ))
             return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
         collected.extend(profiles)
-        result = ProfileItemResult(item=item, status="succeeded", row_count=len(rows))
+        result = ProfileItemResult(
+            item=item,
+            status="succeeded",
+            row_count=len(rows),
+            bytes_processed=bytes_processed,
+            bytes_billed=bytes_billed,
+        )
         results.append(result)
         _notify(progress, ProfileProgress(
             event="execute_completed", current=current_index, total=len(plan),

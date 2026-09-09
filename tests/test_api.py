@@ -10,8 +10,8 @@ from pydantic import ValidationError
 
 from data_profile.api import DataProfile
 from data_profile.cli import main as cli_main
-from data_profile.models import ColumnMetadata, ColumnProfile, ProfileSlice
-from data_profile.planning import ProfileProgress
+from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
+from data_profile.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
 from data_profile.server import create_app
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
 from data_profile.sample import sample_models
@@ -296,6 +296,43 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     assert "[SKIPPED 1/1] model.demo.events / user_id" in output
     assert "1,284,392 distinct values exceeds the 10,000 limit" in output
     assert "[COMPLETE] Profiled 0 models with 0 queries" in output
+
+
+def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from data_profile.cli import _print_profile_progress
+
+    model = ModelProfile(
+        name="events",
+        database="project",
+        schema_name="dataset",
+        materialization="table",
+        profiling=ProfilingConfig(enabled=True),
+    )
+    item = ProfilePlanItem(
+        model=model,
+        sql="SELECT 1",
+        project="project",
+        location="US",
+        model_signature=model.profiling_signature(),
+    )
+    result = ProfileItemResult(
+        item=item,
+        status="succeeded",
+        row_count=3,
+        bytes_processed=12_345,
+        bytes_billed=10_485_760,
+    )
+
+    _print_profile_progress(ProfileProgress(
+        event="execute_completed",
+        current=1,
+        total=1,
+        item=item,
+        result=result,
+    ), tmp_path)
+
+    output = capsys.readouterr().out
+    assert "12,345 bytes processed / 10,485,760 bytes billed" in output
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
