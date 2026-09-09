@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
@@ -61,6 +62,32 @@ class ProfileItemResult(BaseModel):
     model_config = {"frozen": True}
 
 
+@dataclass(frozen=True)
+class ProfileProgress:
+    """A synchronous progress event emitted while planning and running profiles."""
+
+    event: Literal[
+        "estimate_started", "estimate_completed", "estimate_failed",
+        "execute_started", "execute_completed", "execute_skipped",
+        "storage_started", "storage_completed", "storage_discarded", "storage_failed",
+    ]
+    current: int = 0
+    total: int = 0
+    model: ModelProfile | None = None
+    dimension: str | None = None
+    item: ProfilePlanItem | None = None
+    result: ProfileItemResult | None = None
+    error: str | None = None
+
+
+ProgressCallback = Callable[[ProfileProgress], None]
+
+
+def _notify(progress: ProgressCallback | None, event: ProfileProgress) -> None:
+    if progress is not None:
+        progress(event)
+
+
 class ProfilePlanExecution(BaseModel):
     """Internal execution state tracking all item results.
 
@@ -83,6 +110,7 @@ def create_profile_plan(
     location: str = "asia-northeast1",
     adapter: WarehouseAdapter | None = None,
     estimator: Estimator | None = None,
+    progress: ProgressCallback | None = None,
 ) -> list[ProfilePlanItem]:
     warehouse = complete_adapter(adapter)
     estimate = estimator or warehouse.estimate
@@ -97,32 +125,53 @@ def create_profile_plan(
     if not enabled:
         raise PlanningError("no relations have meta.profiling.enabled=true")
 
+    targets = [
+        (model, dimension)
+        for model in enabled
+        for dimension in [None, *model.profiling.dimensions]
+    ]
     plan: list[ProfilePlanItem] = []
-    for model in enabled:
+    for index, (model, dimension) in enumerate(targets, start=1):
         skipped = tuple(column.name for column in model.columns if column.data_type not in supported_types)
         query_project = project or model.database
-        dimensions: list[str | None] = [None, *model.profiling.dimensions]
-        for dimension in dimensions:
-            try:
-                sql = warehouse.build_profile_query(model, dimension)
-                estimated = estimate(sql, query_project, location)
-            except DataProfileError:
-                raise
-            except Exception as error:
-                raise WarehouseError(
-                    f"warehouse could not plan {model.unique_id} / {dimension or 'Overall'}"
-                ) from error
-            plan.append(ProfilePlanItem(
-                model=model.model_copy(deep=True),
-                dimension=dimension,
-                sql=sql,
-                project=query_project,
-                location=location,
-                estimated_bytes=estimated,
-                max_bytes_billed=model.profiling.max_bytes_billed,
-                skipped_columns=skipped,
-                model_signature=model.profiling_signature(),
+        _notify(progress, ProfileProgress(
+            event="estimate_started", current=index, total=len(targets),
+            model=model, dimension=dimension,
+        ))
+        try:
+            sql = warehouse.build_profile_query(model, dimension)
+            estimated = estimate(sql, query_project, location)
+        except DataProfileError as error:
+            _notify(progress, ProfileProgress(
+                event="estimate_failed", current=index, total=len(targets),
+                model=model, dimension=dimension, error=str(error),
             ))
+            raise
+        except Exception as error:
+            wrapped = WarehouseError(
+                f"warehouse could not plan {model.unique_id} / {dimension or 'Overall'}"
+            )
+            _notify(progress, ProfileProgress(
+                event="estimate_failed", current=index, total=len(targets),
+                model=model, dimension=dimension, error=str(wrapped),
+            ))
+            raise wrapped from error
+        item = ProfilePlanItem(
+            model=model.model_copy(deep=True),
+            dimension=dimension,
+            sql=sql,
+            project=query_project,
+            location=location,
+            estimated_bytes=estimated,
+            max_bytes_billed=model.profiling.max_bytes_billed,
+            skipped_columns=skipped,
+            model_signature=model.profiling_signature(),
+        )
+        plan.append(item)
+        _notify(progress, ProfileProgress(
+            event="estimate_completed", current=index, total=len(targets),
+            model=model, dimension=dimension, item=item,
+        ))
     return plan
 
 
@@ -132,6 +181,7 @@ def execute_profile_plan(
     *,
     adapter: WarehouseAdapter | None = None,
     runner: Runner | None = None,
+    progress: ProgressCallback | None = None,
 ) -> ProfilePlanExecution:
     warehouse = complete_adapter(adapter)
     execute = runner or warehouse.execute
@@ -154,11 +204,18 @@ def execute_profile_plan(
                 else "plan contains another item over max_bytes_billed"
             ),
         ) for item in plan)
+        for index, result in enumerate(results, start=1):
+            _notify(progress, ProfileProgress(
+                event="execute_skipped", current=index, total=len(plan),
+                model=result.item.model, dimension=result.item.dimension,
+                item=result.item, result=result,
+            ))
         return ProfilePlanExecution(models=models, results=results, complete=False)
 
     profiles_by_model: dict[str, list] = {}
     results: list[ProfileItemResult] = []
     for index, item in enumerate(plan):
+        current_index = index + 1
         collected = profiles_by_model.setdefault(item.model.unique_id, [])
         if item.dimension is not None:
             dimension_column = next(
@@ -182,7 +239,7 @@ def execute_profile_plan(
                 distinct_values = dimension_metric.distinct_count
                 maximum_allowed = item.model.profiling.max_dimension_values
                 if distinct_values > maximum_allowed:
-                    results.append(ProfileItemResult(
+                    result = ProfileItemResult(
                         item=item,
                         status="skipped",
                         error=(
@@ -192,8 +249,17 @@ def execute_profile_plan(
                         skip_reason="max_dimension_values",
                         distinct_values=distinct_values,
                         maximum_allowed=maximum_allowed,
+                    )
+                    results.append(result)
+                    _notify(progress, ProfileProgress(
+                        event="execute_skipped", current=current_index, total=len(plan),
+                        model=item.model, dimension=item.dimension, item=item, result=result,
                     ))
                     continue
+        _notify(progress, ProfileProgress(
+            event="execute_started", current=current_index, total=len(plan),
+            model=item.model, dimension=item.dimension, item=item,
+        ))
         try:
             rows = execute(item.sql, item.project, item.location, item.max_bytes_billed)
             profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
@@ -214,15 +280,32 @@ def execute_profile_plan(
                         "dimension record counts do not match Overall; result may be incomplete"
                     )
         except Exception as error:
-            results.append(ProfileItemResult(item=item, status="failed", error=str(error)))
-            results.extend(ProfileItemResult(
+            failed = ProfileItemResult(item=item, status="failed", error=str(error))
+            results.append(failed)
+            _notify(progress, ProfileProgress(
+                event="execute_completed", current=current_index, total=len(plan),
+                model=item.model, dimension=item.dimension, item=item, result=failed,
+            ))
+            remaining_results = [ProfileItemResult(
                 item=remaining,
                 status="skipped",
                 error="not executed because an earlier item failed",
-            ) for remaining in plan[index + 1:])
+            ) for remaining in plan[index + 1:]]
+            results.extend(remaining_results)
+            for offset, skipped in enumerate(remaining_results, start=current_index + 1):
+                _notify(progress, ProfileProgress(
+                    event="execute_skipped", current=offset, total=len(plan),
+                    model=skipped.item.model, dimension=skipped.item.dimension,
+                    item=skipped.item, result=skipped,
+                ))
             return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
         collected.extend(profiles)
-        results.append(ProfileItemResult(item=item, status="succeeded", row_count=len(rows)))
+        result = ProfileItemResult(item=item, status="succeeded", row_count=len(rows))
+        results.append(result)
+        _notify(progress, ProfileProgress(
+            event="execute_completed", current=current_index, total=len(plan),
+            model=item.model, dimension=item.dimension, item=item, result=result,
+        ))
 
     profiled_at = datetime.now(UTC)
     updated_models = [
