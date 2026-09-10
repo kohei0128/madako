@@ -19,11 +19,19 @@ from data_profile.repository import DuckDBProfileRepository, JsonProfileReposito
 MODELS_FILENAME = "models.parquet"
 PROFILES_FILENAME = "column_profiles.parquet"
 
-# Generation directory settings
-USE_GENERATION_DIRS = os.environ.get("DATA_PROFILE_USE_GENERATIONS", "").lower() in ("1", "true", "yes")
 GENERATIONS_SUBDIR = "generations"
 CURRENT_LINK = "current"
-KEEP_GENERATIONS = 3  # Keep latest N generations
+DEFAULT_KEEP_GENERATIONS = 3
+MIN_KEEP_GENERATIONS = 2
+
+
+def _generation_mode_from_env() -> bool:
+    """Read the legacy environment switch when no explicit mode is configured."""
+    return os.environ.get("DATA_PROFILE_USE_GENERATIONS", "").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
 
 class StorageRecoveryError(StorageOperationError):
@@ -106,7 +114,7 @@ class ProfileStorage(Protocol):
 
 
 class ParquetProfileStorage:
-    """Parquet-based profile storage with optional generation directory support.
+    """Parquet storage with direct and generation-based update modes.
 
     Storage modes:
     1. Direct mode (default): Writes models.parquet and column_profiles.parquet
@@ -114,8 +122,9 @@ class ParquetProfileStorage:
     2. Generation mode: Writes to versioned subdirectories with atomic symlink
        switching for better concurrency safety
 
-    Generation mode is enabled via environment variable:
-        DATA_PROFILE_USE_GENERATIONS=1
+    Generation mode can be selected explicitly with ``use_generations=True``.
+    ``DATA_PROFILE_USE_GENERATIONS=1`` remains as a compatibility fallback when
+    the constructor argument is omitted.
 
     When enabled, directory structure becomes:
         .data-profile/
@@ -127,16 +136,31 @@ class ParquetProfileStorage:
                 └── column_profiles.parquet
     """
 
-    def __init__(self, directory: str | Path, *, use_generations: bool | None = None):
+    def __init__(
+        self,
+        directory: str | Path,
+        *,
+        use_generations: bool | None = None,
+        keep_generations: int = DEFAULT_KEEP_GENERATIONS,
+    ):
         """Initialize Parquet profile storage.
 
         Args:
             directory: Root directory for profile storage
             use_generations: Enable generation directory mode. If None, uses
                 environment variable DATA_PROFILE_USE_GENERATIONS.
+            keep_generations: Number of generations to retain, including the
+                current generation. Must be at least two.
         """
+        if keep_generations < MIN_KEEP_GENERATIONS:
+            raise ValueError(
+                f"keep_generations must be at least {MIN_KEEP_GENERATIONS}"
+            )
         self.directory = Path(directory)
-        self._use_generations = USE_GENERATION_DIRS if use_generations is None else use_generations
+        self._use_generations = (
+            _generation_mode_from_env() if use_generations is None else use_generations
+        )
+        self._keep_generations = keep_generations
 
     @property
     def paths(self) -> tuple[Path, Path]:
@@ -163,7 +187,12 @@ class ParquetProfileStorage:
         if self._use_generations:
             current_link = self.directory / CURRENT_LINK
             if not current_link.exists():
-                return False
+                present = [path.exists() for path in self.paths]
+                if any(present) and not all(present):
+                    raise StorageFormatError(
+                        "incomplete profile storage: both Parquet files are required"
+                    )
+                return all(present)
             if not current_link.is_symlink():
                 raise StorageFormatError(f"{CURRENT_LINK} exists but is not a symlink")
 
@@ -189,7 +218,9 @@ class ParquetProfileStorage:
         In generation mode, loads from the current generation via symlink.
         """
         if self._use_generations:
-            return _load_with_generation(self.directory)
+            current_link = self.directory / CURRENT_LINK
+            if current_link.exists():
+                return _load_with_generation(self.directory)
         return DuckDBProfileRepository(*self.paths).list_models()
 
     def get_model(self, identifier: str) -> ModelProfile:
@@ -199,12 +230,11 @@ class ParquetProfileStorage:
         """
         if self._use_generations:
             current_link = self.directory / CURRENT_LINK
-            if not current_link.exists():
-                raise StorageFormatError("no current generation")
-            gen_dir = self.directory / current_link.readlink()
-            models_path = gen_dir / MODELS_FILENAME
-            profiles_path = gen_dir / PROFILES_FILENAME
-            return DuckDBProfileRepository(models_path, profiles_path).get_model(identifier)
+            if current_link.exists():
+                gen_dir = self.directory / current_link.readlink()
+                models_path = gen_dir / MODELS_FILENAME
+                profiles_path = gen_dir / PROFILES_FILENAME
+                return DuckDBProfileRepository(models_path, profiles_path).get_model(identifier)
         return DuckDBProfileRepository(*self.paths).get_model(identifier)
 
     def save(self, models: list[ModelProfile]) -> tuple[Path, Path]:
@@ -214,13 +244,22 @@ class ParquetProfileStorage:
         switches the 'current' symlink.
         """
         if self._use_generations:
-            return _save_with_generation(models, self.directory)
+            return _save_with_generation(
+                models,
+                self.directory,
+                keep_generations=self._keep_generations,
+            )
         return write_profile_storage(models, self.directory)
 
 
-def build_parquet_fixture(source_path: Path, output_dir: Path) -> tuple[Path, Path]:
+def build_parquet_fixture(
+    source_path: Path,
+    output_dir: Path,
+    *,
+    storage: ProfileStorage | None = None,
+) -> tuple[Path, Path]:
     models = JsonProfileRepository(source_path).list_models()
-    return write_profile_storage(models, output_dir)
+    return (storage or ParquetProfileStorage(output_dir)).save(models)
 
 
 def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Path, Path]:
@@ -489,7 +528,12 @@ def _read_current_generation(storage_dir: Path) -> int:
         raise StorageFormatError(f"invalid generation number in {target}") from error
 
 
-def _save_with_generation(models: list[ModelProfile], storage_dir: Path) -> tuple[Path, Path]:
+def _save_with_generation(
+    models: list[ModelProfile],
+    storage_dir: Path,
+    *,
+    keep_generations: int,
+) -> tuple[Path, Path]:
     """Save profiles using generation directory strategy with atomic symlink switching.
 
     This provides better concurrency safety:
@@ -535,6 +579,7 @@ def _save_with_generation(models: list[ModelProfile], storage_dir: Path) -> tupl
             "possible concurrent write or incomplete cleanup"
         )
     gen_dir.mkdir()
+    temp_link = storage_dir / f".current-{next_gen}"
 
     # 3. Write Parquet files to new generation
     try:
@@ -545,7 +590,6 @@ def _save_with_generation(models: list[ModelProfile], storage_dir: Path) -> tupl
 
         # 5. Atomically switch symlink to new generation
         current_link = storage_dir / CURRENT_LINK
-        temp_link = storage_dir / f".current-{next_gen}"
 
         # Create temporary symlink pointing to new generation
         temp_link.symlink_to(f"{GENERATIONS_SUBDIR}/gen-{next_gen:04d}")
@@ -554,12 +598,16 @@ def _save_with_generation(models: list[ModelProfile], storage_dir: Path) -> tupl
         os.replace(temp_link, current_link)
 
         # 6. Clean up old generations
-        _cleanup_old_generations(storage_dir, keep=KEEP_GENERATIONS)
+        _cleanup_old_generations(storage_dir, keep=keep_generations)
 
         return models_path, profiles_path
 
     except Exception:
         # Clean up failed generation directory
+        try:
+            temp_link.unlink(missing_ok=True)
+        except OSError:
+            pass
         if gen_dir.exists():
             shutil.rmtree(gen_dir)
         raise

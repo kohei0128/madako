@@ -1,6 +1,6 @@
 # Madako Roadmap
 
-最終更新: 2026-09-06
+最終更新: 2026-09-10
 
 プロダクト要件は[product-requirements.md](product-requirements.md)、現在の実装は[development-status.md](development-status.md)を正とする。
 
@@ -70,11 +70,13 @@ categorical dimensionは保存・表示まで。実query生成はMVPの残課題
   - ProfilingConfig/ModelProfile.profiling_signature()にdocstring追加
   - Parquet schema versioningのドキュメント追加
   - バージョニング方針と互換性ルールを明文化
-- **世代ディレクトリ方式の実装（実験的機能）** (2026-09-05)
-  - 環境変数 `DATA_PROFILE_USE_GENERATIONS=1` で有効化
+- **世代ディレクトリ方式の実装** (2026-09-05、2026-09-10正式設定化)
+  - `madako.toml`の`storage.mode = "generations"`で有効化
+  - 保持数は既定3世代、`keep_generations`で2以上に設定可能
+  - 従来の環境変数 `DATA_PROFILE_USE_GENERATIONS=1`も互換維持
   - symlinkによるatomic切り替えで並行アクセス安全性を向上
   - 複数世代の保持とロールバック機能
-  - 7つの新規テストで動作検証済み
+  - direct storageの読み取りと初回保存時の移行に対応
   - 既存の直接保存方式と共存可能
 
 Phase 3は設計・実装・テストまで完了。0.xライブラリとしての契約が安定化。

@@ -171,7 +171,14 @@ def test_cli_build_sample_discovers_parent_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "madako.toml").write_text(
-        "[project]\nstorage_dir = '.madako'\n",
+        """
+[project]
+storage_dir = ".madako"
+
+[storage]
+mode = "generations"
+keep_generations = 2
+""".strip(),
         encoding="utf-8",
     )
     child = tmp_path / "models"
@@ -181,7 +188,13 @@ def test_cli_build_sample_discovers_parent_config(
 
     cli_main()
 
-    assert ParquetProfileStorage(tmp_path / ".madako").exists()
+    storage = ParquetProfileStorage(
+        tmp_path / ".madako",
+        use_generations=True,
+        keep_generations=2,
+    )
+    assert storage.exists()
+    assert (tmp_path / ".madako" / "current").is_symlink()
 
 
 def test_cli_options_override_config(
@@ -275,7 +288,10 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     def import_dbt(
         received_project_dir: Path,
         received_storage_dir: Path,
+        *,
+        storage: ParquetProfileStorage,
     ) -> SimpleNamespace:
+        assert storage.directory == storage_dir
         calls.append(("import", received_project_dir, received_storage_dir))
         return app
 

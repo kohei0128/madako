@@ -84,9 +84,17 @@ location = "asia-northeast1"
 [server]
 host = "127.0.0.1"
 port = 8000
+
+[storage]
+mode = "generations"
+keep_generations = 3
 ```
 
 相対パスは`madako.toml`の場所を基準にします。Madakoは現在のディレクトリから親へ向かって設定ファイルを探すため、project内のどこからでも実行できます。
+
+`storage.mode = "generations"`は、検証済みの新しい世代を作成してから`current` symlinkを切り替えます。既定では現在を含む3世代を保持し、`keep_generations`には2以上を指定できます。単一writerを前提とし、複数processからの同時保存は保証しません。`storage`設定を省略した場合は従来どおりdirect modeです。既存の`DATA_PROFILE_USE_GENERATIONS=1`も互換性のため利用できますが、新しい設定では`madako.toml`を推奨します。
+
+既存のdirect modeのstorageをgenerations modeで開くこともできます。次回の正常な保存から世代directoryへ移行し、それまでは既存の2ファイルを読み取ります。
 
 生成されるstorageをGitで管理しない場合は、`.madako/`を`.gitignore`へ追加してください。
 
@@ -139,7 +147,7 @@ OverallとDATE / DATETIME / TIMESTAMP / STRING dimensionを生成できます。
 - BigQuery以外のwarehouseにはまだ対応していません。
 - dbt selection syntaxには未対応です。`--select`にはモデル名または`unique_id`を指定します。
 - STRING以外のcategorical型はdimension queryを生成できません。
-- storageはローカル利用向けです。同時更新や更新中の読み取りは保証していません。
+- storageはローカルfilesystem向けです。generations modeは更新中のreaderに安定した世代を見せますが、複数writerからの同時保存は保証しません。
 
 Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更される可能性があります。
 

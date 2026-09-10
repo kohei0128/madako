@@ -19,12 +19,12 @@ dbt artifacts → DataProfile.plan() → optional BigQuery dry run
 | 領域 | 実装済み | 残る制限 |
 |---|---|---|
 | dbt import | project内のmodels / sources / columns / tests / direct dependencies、catalog優先とmanifest fallback、古いcatalogへの警告。`profile`実行前にも自動import | dbtのparse / buildは呼び出さない |
-| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、CLI override。profilingはenabled、dimensions、max_dimension_values、任意のqueryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
+| 設定 | `madako.toml`の自動検出、project / storage / BigQuery / server設定、direct / generations storage modeと世代保持数、CLI override。profilingはenabled、dimensions、max_dimension_values、任意のqueryごとのmax_bytes_billed、空文字のMissing算入 | config schema versioningは未対応 |
 | Profiling | OverallとDATE / DATETIME / TIMESTAMP / STRING dimension、STRING cardinality guard、型別metrics、NULL bucket | STRING以外のcategorical dimensionは未対応 |
 | 型 | STRING / INT64 / FLOAT64 / NUMERIC / BIGNUMERIC / BOOL / DATE / DATETIME / TIMESTAMP、INTEGER / FLOAT / BOOLEANの正規化 | 複合型などは除外 |
 | 実行 | max_bytes_billed指定relationのdry run、上限超過時は全skip、実行後の処理量表示、fail-fast、構造化した項目別結果、全成功後に1回保存。実BigQuery E2E確認済み | 長時間queryの進捗・timeoutは未対応 |
 | Warehouse | 対応型・SQL生成・推定・query実行・結果変換をWarehouseAdapterで差し替え | 既定実装はBigQuery SQLと外部`bq` CLI |
-| Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、CSV一括ロード、stage検証、置換失敗の復元 | 同時アクセス・強制終了のtransaction保証なし |
+| Storage | ProfileStorage、Parquet schema v1、unique_idによる分離、CSV一括ロード、stage検証、置換失敗の復元、symlinkで検証済み世代を切り替えるgenerations mode | 複数writer・強制終了のtransaction保証なし |
 | Web | Explorer、型フィルタ、Overall、DATE比較、categorical比較、Refresh、直接の上流・下流lineage。同梱UIを`madako serve`でAPIと同一portから配信 | 対応ブラウザはCIで検証するChromiumのみ |
 | テスト・サンプル | 合成データ、dbt artifact、実BigQuery用Phase 2 E2E、外部最小dbt project smoke。unit / package / browser CIを実行 | 実BigQuery E2Eは費用と認証を伴うため手動実行 |
 

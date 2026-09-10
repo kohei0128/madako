@@ -1,6 +1,6 @@
 # Config and Storage Versioning Guide
 
-最終更新: 2026-09-06
+最終更新: 2026-09-10
 
 このドキュメントは、ProfilingConfigとParquet storageのバージョニング方針を定義します。
 
@@ -11,6 +11,8 @@ Madakoには3層のバージョニングがあります:
 1. **Parquet Schema Version**: ファイル形式のバージョン（カラム構造、型）
 2. **Profiling Signature**: 計算ロジックに影響する設定の変更検知
 3. **Profile Computation Version**: 対応型やmetric計算実装の変更検知
+
+`[storage]`の`mode`と`keep_generations`は保存directoryの公開・保持方法だけを制御し、Parquet schema versionやprofiling signatureには影響しない。設定を省略した既存configはdirect modeとして引き続き利用できる。
 
 ## 1. Parquet Schema Version
 
