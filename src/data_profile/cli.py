@@ -157,6 +157,7 @@ def main() -> None:
     profile.add_argument("--select")
     profile.add_argument("--project")
     profile.add_argument("--location")
+    profile.add_argument("--threads", type=int)
     args = parser.parse_args()
 
     try:
@@ -230,7 +231,11 @@ def main() -> None:
             location=args.location or config.location,
             progress=report_progress,
         )
-        result = data_profile.run(plan_result, progress=report_progress)
+        result = data_profile.run(
+            plan_result,
+            progress=report_progress,
+            threads=args.threads if args.threads is not None else config.threads,
+        )
         if not result.successful:
             raise SystemExit(1)
         executed = sum(item.status == "succeeded" for item in result.items)

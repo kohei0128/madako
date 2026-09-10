@@ -1,6 +1,8 @@
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from threading import Event, Lock
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -200,7 +202,10 @@ def execute_profile_plan(
     adapter: WarehouseAdapter | None = None,
     runner: Runner | None = None,
     progress: ProgressCallback | None = None,
+    threads: int = 1,
 ) -> ProfilePlanExecution:
+    if threads < 1:
+        raise PlanningError("threads must be at least 1")
     warehouse = complete_adapter(adapter)
     execute = runner or warehouse.execute
     current = {model.unique_id: model for model in models}
@@ -230,114 +235,167 @@ def execute_profile_plan(
             ))
         return ProfilePlanExecution(models=models, results=results, complete=False)
 
-    profiles_by_model: dict[str, list] = {}
-    results: list[ProfileItemResult] = []
+    grouped: dict[str, list[tuple[int, ProfilePlanItem]]] = {}
     for index, item in enumerate(plan):
-        current_index = index + 1
-        collected = profiles_by_model.setdefault(item.model.unique_id, [])
-        if item.dimension is not None:
-            dimension_column = next(
-                column for column in item.model.columns if column.name == item.dimension
-            )
-            if dimension_column.data_type == "STRING":
-                overall = next(
-                    (profile for profile in collected if profile.dimension_name is None), None
+        grouped.setdefault(item.model.unique_id, []).append((index, item))
+
+    stop = Event()
+    progress_lock = Lock()
+
+    def notify(event: ProfileProgress) -> None:
+        # User callbacks are not required to be thread-safe. Keep each callback
+        # invocation serialized while queries themselves run concurrently.
+        with progress_lock:
+            _notify(progress, event)
+
+    def execute_relation(
+        indexed_items: list[tuple[int, ProfilePlanItem]],
+    ) -> tuple[list, list[tuple[int, ProfileItemResult]]]:
+        collected: list = []
+        relation_results: list[tuple[int, ProfileItemResult]] = []
+        relation_failed = False
+        for index, item in indexed_items:
+            current_index = index + 1
+            if relation_failed or stop.is_set():
+                result = ProfileItemResult(
+                    item=item,
+                    status="skipped",
+                    error=(
+                        "not executed because an earlier item failed"
+                        if relation_failed
+                        else "not executed because another relation failed"
+                    ),
                 )
-                if overall is None:
-                    raise PlanningError(
-                        f"Overall profile must run before dimension {item.dimension}"
-                    )
-                dimension_metric = next(
-                    (column for column in overall.columns if column.name == item.dimension), None
-                )
-                if dimension_metric is None or dimension_metric.distinct_count is None:
-                    raise PlanningError(
-                        f"Overall profile did not produce distinct count for {item.dimension}"
-                    )
-                distinct_values = dimension_metric.distinct_count
-                maximum_allowed = item.model.profiling.max_dimension_values
-                if distinct_values > maximum_allowed:
-                    result = ProfileItemResult(
-                        item=item,
-                        status="skipped",
-                        error=(
-                            f"dimension has {distinct_values:,} distinct values; "
-                            f"maximum allowed is {maximum_allowed:,}"
-                        ),
-                        skip_reason="max_dimension_values",
-                        distinct_values=distinct_values,
-                        maximum_allowed=maximum_allowed,
-                    )
-                    results.append(result)
-                    _notify(progress, ProfileProgress(
-                        event="execute_skipped", current=current_index, total=len(plan),
-                        model=item.model, dimension=item.dimension, item=item, result=result,
-                    ))
-                    continue
-        _notify(progress, ProfileProgress(
-            event="execute_started", current=current_index, total=len(plan),
-            model=item.model, dimension=item.dimension, item=item,
-        ))
-        try:
-            execution = execute(item.sql, item.project, item.location, item.max_bytes_billed)
-            if isinstance(execution, QueryExecution):
-                rows = execution.rows
-                bytes_processed = execution.bytes_processed
-                bytes_billed = execution.bytes_billed
-            else:
-                rows = execution
-                bytes_processed = None
-                bytes_billed = None
-            profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
-            overall = [profile for profile in profiles if profile.dimension_name is None]
-            dimensions = [profile for profile in profiles if profile.dimension_name is not None]
-            if item.dimension is None and (len(overall) != 1 or dimensions):
-                raise ResultValidationError("adapter result must contain exactly one Overall profile")
-            if item.dimension is not None and (
-                overall or any(profile.dimension_name != item.dimension for profile in dimensions)
-            ):
-                raise ResultValidationError("adapter result contains an unexpected dimension")
-            if item.dimension is not None:
-                model_overall = next(
-                    profile for profile in collected if profile.dimension_name is None
-                )
-                if sum(profile.record_count for profile in dimensions) != model_overall.record_count:
-                    raise ResultValidationError(
-                        "dimension record counts do not match Overall; result may be incomplete"
-                    )
-        except Exception as error:
-            failed = ProfileItemResult(item=item, status="failed", error=str(error))
-            results.append(failed)
-            _notify(progress, ProfileProgress(
-                event="execute_completed", current=current_index, total=len(plan),
-                model=item.model, dimension=item.dimension, item=item, result=failed,
-            ))
-            remaining_results = [ProfileItemResult(
-                item=remaining,
-                status="skipped",
-                error="not executed because an earlier item failed",
-            ) for remaining in plan[index + 1:]]
-            results.extend(remaining_results)
-            for offset, skipped in enumerate(remaining_results, start=current_index + 1):
-                _notify(progress, ProfileProgress(
-                    event="execute_skipped", current=offset, total=len(plan),
-                    model=skipped.item.model, dimension=skipped.item.dimension,
-                    item=skipped.item, result=skipped,
+                relation_results.append((index, result))
+                notify(ProfileProgress(
+                    event="execute_skipped", current=current_index, total=len(plan),
+                    model=item.model, dimension=item.dimension, item=item, result=result,
                 ))
-            return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
-        collected.extend(profiles)
-        result = ProfileItemResult(
-            item=item,
-            status="succeeded",
-            row_count=len(rows),
-            bytes_processed=bytes_processed,
-            bytes_billed=bytes_billed,
-        )
-        results.append(result)
-        _notify(progress, ProfileProgress(
-            event="execute_completed", current=current_index, total=len(plan),
-            model=item.model, dimension=item.dimension, item=item, result=result,
-        ))
+                continue
+            if item.dimension is not None:
+                dimension_column = next(
+                    column for column in item.model.columns if column.name == item.dimension
+                )
+                if dimension_column.data_type == "STRING":
+                    overall = next(
+                        (profile for profile in collected if profile.dimension_name is None), None
+                    )
+                    if overall is None:
+                        raise PlanningError(
+                            f"Overall profile must run before dimension {item.dimension}"
+                        )
+                    dimension_metric = next(
+                        (column for column in overall.columns if column.name == item.dimension), None
+                    )
+                    if dimension_metric is None or dimension_metric.distinct_count is None:
+                        raise PlanningError(
+                            f"Overall profile did not produce distinct count for {item.dimension}"
+                        )
+                    distinct_values = dimension_metric.distinct_count
+                    maximum_allowed = item.model.profiling.max_dimension_values
+                    if distinct_values > maximum_allowed:
+                        result = ProfileItemResult(
+                            item=item,
+                            status="skipped",
+                            error=(
+                                f"dimension has {distinct_values:,} distinct values; "
+                                f"maximum allowed is {maximum_allowed:,}"
+                            ),
+                            skip_reason="max_dimension_values",
+                            distinct_values=distinct_values,
+                            maximum_allowed=maximum_allowed,
+                        )
+                        relation_results.append((index, result))
+                        notify(ProfileProgress(
+                            event="execute_skipped", current=current_index, total=len(plan),
+                            model=item.model, dimension=item.dimension, item=item, result=result,
+                        ))
+                        continue
+            notify(ProfileProgress(
+                event="execute_started", current=current_index, total=len(plan),
+                model=item.model, dimension=item.dimension, item=item,
+            ))
+            try:
+                execution = execute(item.sql, item.project, item.location, item.max_bytes_billed)
+                if isinstance(execution, QueryExecution):
+                    rows = execution.rows
+                    bytes_processed = execution.bytes_processed
+                    bytes_billed = execution.bytes_billed
+                else:
+                    rows = execution
+                    bytes_processed = None
+                    bytes_billed = None
+                profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
+                overall = [profile for profile in profiles if profile.dimension_name is None]
+                dimensions = [profile for profile in profiles if profile.dimension_name is not None]
+                if item.dimension is None and (len(overall) != 1 or dimensions):
+                    raise ResultValidationError("adapter result must contain exactly one Overall profile")
+                if item.dimension is not None and (
+                    overall or any(profile.dimension_name != item.dimension for profile in dimensions)
+                ):
+                    raise ResultValidationError("adapter result contains an unexpected dimension")
+                if item.dimension is not None:
+                    model_overall = next(
+                        profile for profile in collected if profile.dimension_name is None
+                    )
+                    if sum(profile.record_count for profile in dimensions) != model_overall.record_count:
+                        raise ResultValidationError(
+                            "dimension record counts do not match Overall; result may be incomplete"
+                        )
+            except Exception as error:
+                result = ProfileItemResult(item=item, status="failed", error=str(error))
+                relation_results.append((index, result))
+                relation_failed = True
+                stop.set()
+                notify(ProfileProgress(
+                    event="execute_completed", current=current_index, total=len(plan),
+                    model=item.model, dimension=item.dimension, item=item, result=result,
+                ))
+                continue
+            collected.extend(profiles)
+            result = ProfileItemResult(
+                item=item,
+                status="succeeded",
+                row_count=len(rows),
+                bytes_processed=bytes_processed,
+                bytes_billed=bytes_billed,
+            )
+            relation_results.append((index, result))
+            notify(ProfileProgress(
+                event="execute_completed", current=current_index, total=len(plan),
+                model=item.model, dimension=item.dimension, item=item, result=result,
+            ))
+        return collected, relation_results
+
+    profiles_by_model: dict[str, list] = {}
+    ordered_results: list[ProfileItemResult | None] = [None] * len(plan)
+
+    def collect(
+        unique_id: str,
+        relation_execution: tuple[list, list[tuple[int, ProfileItemResult]]],
+    ) -> None:
+        profiles, relation_results = relation_execution
+        profiles_by_model[unique_id] = profiles
+        for index, result in relation_results:
+            ordered_results[index] = result
+
+    if threads == 1 or len(grouped) == 1:
+        for unique_id, indexed_items in grouped.items():
+            collect(unique_id, execute_relation(indexed_items))
+    else:
+        with ThreadPoolExecutor(max_workers=min(threads, len(grouped))) as executor:
+            futures = {
+                unique_id: executor.submit(execute_relation, indexed_items)
+                for unique_id, indexed_items in grouped.items()
+            }
+            for unique_id, future in futures.items():
+                collect(unique_id, future.result())
+
+    results = [result for result in ordered_results if result is not None]
+    if len(results) != len(plan):
+        raise PlanningError("profile execution did not produce a result for every plan item")
+    if any(result.status == "failed" for result in results):
+        return ProfilePlanExecution(models=models, results=tuple(results), complete=False)
 
     profiled_at = datetime.now(UTC)
     updated_models = [

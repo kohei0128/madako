@@ -1,3 +1,5 @@
+from threading import Barrier, Lock
+
 import pytest
 
 from data_profile.bigquery_profile import ProfilingError
@@ -151,6 +153,66 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
         "processed_date",
     ]
     assert execution.models[0].profiled_at is not None
+
+
+def test_execute_plan_runs_different_relations_in_parallel_and_preserves_order() -> None:
+    first = configured_model().model_copy(update={
+        "profiling": ProfilingConfig(enabled=True),
+    })
+    second = first.model_copy(update={
+        "unique_id": "model.test.orders",
+        "name": "orders",
+        "relation_name": "`project.dataset.orders`",
+    })
+    plan = create_profile_plan([first, second], estimator=lambda *_: 1)
+    barrier = Barrier(2)
+    lock = Lock()
+    active = 0
+    maximum_active = 0
+
+    def run(sql: str, *_args) -> list[dict]:
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        barrier.wait(timeout=2)
+        with lock:
+            active -= 1
+        model = second if "orders" in sql else first
+        return [{
+            "dimension_name": None,
+            "dimension_value": None,
+            "record_count": "10",
+            "column_order": str(order),
+            "column_name": column.name,
+            "column_type": column.data_type,
+            "null_count": "0",
+            "null_rate": "0",
+            "distinct_count": None,
+            "min_value": "2026-09-01" if column.data_type == "DATE" else "1",
+            "max_value": "2026-09-01" if column.data_type == "DATE" else "10",
+            "true_count": None,
+        } for order, column in enumerate(model.columns) if column.data_type != "JSON"]
+
+    execution = execute_profile_plan([first, second], plan, runner=run, threads=2)
+
+    assert execution.complete is True
+    assert maximum_active == 2
+    assert [result.item.model.unique_id for result in execution.results] == [
+        first.unique_id,
+        second.unique_id,
+    ]
+    assert [model.unique_id for model in execution.models if model.profiles] == [
+        first.unique_id,
+        second.unique_id,
+    ]
+
+
+def test_execute_plan_rejects_non_positive_thread_count() -> None:
+    plan = create_profile_plan([configured_model()], estimator=lambda *_: 1)
+
+    with pytest.raises(ProfilingError, match="threads must be at least 1"):
+        execute_profile_plan([configured_model()], plan, runner=lambda *_: [], threads=0)
 
 
 def test_high_cardinality_string_dimension_is_skipped_without_stopping_date_dimension() -> None:
