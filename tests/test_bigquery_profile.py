@@ -162,7 +162,7 @@ def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
     import pytest
     from data_profile import bigquery_profile as bq
     monkeypatch.setattr(bq, "MAX_RESULT_ROWS", 2)
-    monkeypatch.setattr(bq, "_run_bq", lambda _: [{}, {}])
+    monkeypatch.setattr(bq, "_run_bq", lambda *_, **__: [{}, {}])
     with pytest.raises(bq.ProfilingError, match="row limit"):
         bq.execute_profile("sql", "project", "US", 1000)
 
@@ -170,7 +170,7 @@ def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
 def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
     from data_profile import bigquery_profile as bq
 
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], str | None]] = []
     responses = iter([
         [{"record_count": "1"}],
         {"statistics": {"query": {
@@ -179,8 +179,8 @@ def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
         }}},
     ])
 
-    def run(command: list[str]):
-        calls.append(command)
+    def run(command: list[str], *, input_text: str | None = None):
+        calls.append((command, input_text))
         return next(responses)
 
     monkeypatch.setattr(bq, "_run_bq", run)
@@ -189,16 +189,21 @@ def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
     assert result.rows == [{"record_count": "1"}]
     assert result.bytes_processed == 123_456
     assert result.bytes_billed == 10_485_760
-    assert calls[0][0] == "bq"
-    assert calls[0][1].startswith("--job_id=madako_")
-    assert not any(arg.startswith("--maximum_bytes_billed=") for arg in calls[0])
-    assert calls[1][-1] == calls[0][1].removeprefix("--job_id=")
+    query_command, query_input = calls[0]
+    show_command, show_input = calls[1]
+    assert query_command[0] == "bq"
+    assert query_command[1].startswith("--job_id=madako_")
+    assert "SELECT 1" not in query_command
+    assert query_input == "SELECT 1"
+    assert not any(arg.startswith("--maximum_bytes_billed=") for arg in query_command)
+    assert show_command[-1] == query_command[1].removeprefix("--job_id=")
+    assert show_input is None
 
 
 def test_execute_profile_applies_optional_maximum_bytes(monkeypatch) -> None:
     from data_profile import bigquery_profile as bq
 
-    calls: list[list[str]] = []
+    calls: list[tuple[list[str], str | None]] = []
     responses = iter([
         [],
         {"statistics": {"query": {
@@ -209,19 +214,38 @@ def test_execute_profile_applies_optional_maximum_bytes(monkeypatch) -> None:
     monkeypatch.setattr(
         bq,
         "_run_bq",
-        lambda command: calls.append(command) or next(responses),
+        lambda command, *, input_text=None: calls.append((command, input_text)) or next(responses),
     )
 
     bq.execute_profile("SELECT 1", "project", "US", 1_000_000)
 
-    assert "--maximum_bytes_billed=1000000" in calls[0]
+    assert "--maximum_bytes_billed=1000000" in calls[0][0]
+    assert calls[0][1] == "SELECT 1"
+
+
+def test_dry_run_passes_query_through_standard_input(monkeypatch) -> None:
+    from data_profile import bigquery_profile as bq
+
+    calls: list[tuple[list[str], str | None]] = []
+    long_sql = "SELECT " + ", ".join(f"{index} AS column_{index}" for index in range(10_000))
+    monkeypatch.setattr(
+        bq,
+        "_run_bq",
+        lambda command, *, input_text=None: calls.append((command, input_text)) or {
+            "statistics": {"totalBytesProcessed": "123"},
+        },
+    )
+
+    assert bq.dry_run(long_sql, "project", "US") == 123
+    assert long_sql not in calls[0][0]
+    assert calls[0][1] == long_sql
 
 
 def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
     import pytest
     from data_profile import bigquery_profile as bq
     for payload in [{}, [], {"statistics": {"totalBytesProcessed": -1}}]:
-        monkeypatch.setattr(bq, "_run_bq", lambda _, payload=payload: payload)
+        monkeypatch.setattr(bq, "_run_bq", lambda *_, payload=payload, **__: payload)
         with pytest.raises(bq.ProfilingError):
             bq.dry_run("sql", "project", "US")
 
