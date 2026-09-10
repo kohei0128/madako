@@ -386,7 +386,7 @@ profiling queryに対して、ユーザーが最大処理量を任意で設定�
 
 ```yaml
 profiling:
-  max_bytes_billed: 1000000000  # bytes、queryごとの上限
+  max_bytes_billed: "1 GB"  # queryごとの上限。byte数の整数でも指定可能
 ```
 
 上限を指定したrelationではdry runを行い、上限を超えるqueryは実行しない。実行したqueryについては、完了後に処理量を表示する。

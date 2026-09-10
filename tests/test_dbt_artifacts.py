@@ -22,7 +22,7 @@ def dbt_project(tmp_path: Path) -> Path:
         "depends_on": {"nodes": ["source.demo.raw.events"]},
         "config": {"materialized": "view", "meta": {"profiling": {
             "enabled": True, "dimensions": ["event_date"],
-            "max_dimension_values": 500, "max_bytes_billed": 1000,
+            "max_dimension_values": 500, "max_bytes_billed": "1 KB",
         }}},
     }
     source = {**model, "unique_id": "source.demo.raw.events", "resource_type": "source",
