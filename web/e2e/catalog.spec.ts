@@ -197,6 +197,29 @@ test("shows and navigates direct upstream and downstream lineage", async ({ page
   await expect(page.getByLabel("Direct lineage").getByRole("button", { name: "Open model events" })).toBeVisible();
 });
 
+test("navigates from lineage to unprofiled relations while the profiled filter is active", async ({ page }) => {
+  const explorer = page.locator(".explorer");
+  const relationFilter = explorer.getByRole("group", { name: "Filter relations by profile status" });
+  const profiled = relationFilter.getByRole("button", { name: "Profiled 1" });
+
+  await profiled.click();
+  await page.getByLabel("Direct lineage").getByRole("button", { name: "Open source users" }).click();
+
+  await expect(page).toHaveURL(/\/relations\/source\.phase4\.users$/);
+  await expect(page.locator(".title-row h1")).toHaveText("users");
+  await expect(page.locator(".pill")).toHaveText("source");
+  await expect(relationFilter.getByRole("button", { name: "All 5" })).toHaveAttribute("aria-pressed", "true");
+
+  await page.getByLabel("Direct lineage").getByRole("button", { name: "Open model events" }).click();
+  await profiled.click();
+  await page.getByLabel("Direct lineage").getByRole("button", { name: "Open model event_summary" }).click();
+
+  await expect(page).toHaveURL(/\/relations\/model\.phase4\.event_summary$/);
+  await expect(page.locator(".title-row h1")).toHaveText("event_summary");
+  await expect(page.locator(".pill")).toHaveText("view");
+  await expect(relationFilter.getByRole("button", { name: "All 5" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("omits empty lineage directions and their arrows", async ({ page }) => {
   const lineage = page.getByLabel("Direct lineage");
 
