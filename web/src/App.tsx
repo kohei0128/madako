@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ColumnProfile, ModelProfile, ProfileSlice } from "./types";
 
 type TypeFilter = "all" | "string" | "numeric" | "boolean" | "date";
+type RelationFilter = "all" | "profiled";
 const typeFilters: { value: TypeFilter; label: string }[] = [
   { value: "all", label: "All" }, { value: "string", label: "String" },
   { value: "numeric", label: "Numeric" }, { value: "boolean", label: "Boolean" },
@@ -368,6 +369,7 @@ function App() {
   const [selectedModel, setSelectedModel] = useState(() => relationIdFromLocation() ?? "");
   const [sliceIndex, setSliceIndex] = useState(0);
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
+  const [relationFilter, setRelationFilter] = useState<RelationFilter>("all");
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [expandedDatasets, setExpandedDatasets] = useState<Set<string>>(new Set());
@@ -445,12 +447,18 @@ function App() {
     : undefined;
   const summarySlice = latestDimensionSlice ?? slice;
   const visibleColumns = summarySlice?.columns.filter((column) => matchesType(column, typeFilter)) ?? [];
+  const profiledModelCount = useMemo(
+    () => models.filter((item) => item.profiled_at !== null).length,
+    [models],
+  );
   const filteredModels = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return models;
-    return models.filter((item) => [item.name, item.schema, item.database, item.resource_type]
-      .some((value) => value.toLowerCase().includes(normalizedQuery)));
-  }, [models, query]);
+    return models.filter((item) => {
+      if (relationFilter === "profiled" && item.profiled_at === null) return false;
+      return !normalizedQuery || [item.name, item.schema, item.database, item.resource_type]
+        .some((value) => value.toLowerCase().includes(normalizedQuery));
+    });
+  }, [models, query, relationFilter]);
   const explorerGroups = useMemo(() => {
     const projects = new Map<string, Map<string, ModelProfile[]>>();
     for (const item of filteredModels) {
@@ -462,6 +470,17 @@ function App() {
     }
     return projects;
   }, [filteredModels]);
+
+  useEffect(() => {
+    if (!loaded || filteredModels.length === 0) return;
+    if (filteredModels.some((item) => item.unique_id === selectedModel)) return;
+    const next = filteredModels[0];
+    setSelectedModel(next.unique_id);
+    setSliceIndex(0);
+    setTypeFilter("all");
+    setExpandedDatasets((current) => new Set(current).add(`${next.database}/${next.schema}`));
+    window.history.replaceState({ relationId: next.unique_id }, "", relationPath(next.unique_id));
+  }, [filteredModels, loaded, selectedModel]);
 
   function selectDimension(dimensionName: string | null) {
     const index = model?.profiles.findIndex((profile) => profile.dimension_name === dimensionName) ?? -1;
@@ -509,23 +528,29 @@ function App() {
   return <main className="shell">
     <aside className="explorer">
       <div className="brand">madako <span>alpha</span></div>
-      <label className="search"><span>Search models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model name" /></label>
+      <label className="search"><span>Search relations</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Model or source name" /></label>
+      <div className="relation-filter" role="group" aria-label="Filter relations by profile status">
+        <button className={relationFilter === "all" ? "active" : ""} aria-pressed={relationFilter === "all"} onClick={() => setRelationFilter("all")}>All <small>{models.length}</small></button>
+        <button className={relationFilter === "profiled" ? "active" : ""} aria-pressed={relationFilter === "profiled"} onClick={() => setRelationFilter("profiled")}><span className="profile-indicator profiled" aria-hidden="true" />Profiled <small>{profiledModelCount}</small></button>
+      </div>
+      <div className="filter-summary"><span>Showing {filteredModels.length} of {models.length}</span><span><i className="profile-indicator profiled" aria-hidden="true" />has profile</span></div>
       <div className="tree-label">Explorer <button onClick={() => setRevision((value) => value + 1)}>Refresh</button></div>
       {[...explorerGroups].sort(([left], [right]) => left.localeCompare(right)).map(([database, datasets]) => <div className="project-group" key={database}>
         <div className="project-name"><span>◆</span>{database}</div>
         {[...datasets].sort(([left], [right]) => left.localeCompare(right)).map(([schema, relations]) => {
           const datasetKey = `${database}/${schema}`;
-          const isOpen = query.trim().length > 0 || expandedDatasets.has(datasetKey);
+          const isOpen = query.trim().length > 0 || relationFilter === "profiled" || expandedDatasets.has(datasetKey);
           return <div className="dataset-group" key={datasetKey}>
             <button className={`dataset-item ${isOpen ? "open" : ""}`} onClick={() => toggleDataset(datasetKey)} aria-expanded={isOpen}>
               <span className="chevron">›</span><span className="dataset-icon">▤</span><span>{schema}</span><small>{relations.length}</small>
             </button>
             {isOpen && <div className="dataset-relations">{[...relations].sort((left, right) => left.name.localeCompare(right.name)).map((item) => <button className={`model-item ${item.unique_id === selectedModel ? "selected" : ""}`} key={item.unique_id || item.name} onClick={() => selectModel(item.unique_id)}>
-              <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span><small>{item.resource_type}</small>{item.name}</span>
+              <span className="table-icon">{item.resource_type === "source" ? "◇" : "▦"}</span><span className="relation-label"><small>{item.resource_type}</small>{item.name}</span><span className={`profile-indicator ${item.profiled_at !== null ? "profiled" : ""}`} aria-hidden="true" title={item.profiled_at !== null ? "Profile available" : "Profile not generated"} />
             </button>)}</div>}
           </div>;
         })}
       </div>)}
+      {loaded && filteredModels.length === 0 && <div className="empty-explorer">No relations match this search and profile filter.</div>}
     </aside>
 
     <section className="detail">
