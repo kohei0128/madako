@@ -75,8 +75,8 @@ ORDER BY dimension_value, column_order
 def dry_run(sql: str, project: str, location: str) -> int:
     payload = _run_bq([
         "bq", "query", f"--project_id={project}", f"--location={location}",
-        "--use_legacy_sql=false", "--dry_run", "--format=json", sql,
-    ])
+        "--use_legacy_sql=false", "--dry_run", "--format=json",
+    ], input_text=sql)
     try:
         estimate = int(payload["statistics"]["totalBytesProcessed"])
     except (KeyError, TypeError, ValueError) as error:
@@ -96,8 +96,8 @@ def execute_profile(
     ]
     if max_bytes_billed is not None:
         command.append(f"--maximum_bytes_billed={max_bytes_billed}")
-    command.extend(["--format=json", f"--max_rows={MAX_RESULT_ROWS}", sql])
-    payload = _run_bq(command)
+    command.extend(["--format=json", f"--max_rows={MAX_RESULT_ROWS}"])
+    payload = _run_bq(command, input_text=sql)
     if not isinstance(payload, list):
         raise WarehouseError("unexpected BigQuery result")
     if len(payload) >= MAX_RESULT_ROWS:
@@ -278,9 +278,15 @@ def _row_to_column(row: dict, metadata: ColumnMetadata) -> ColumnProfile:
     )
 
 
-def _run_bq(command: list[str]) -> dict | list:
+def _run_bq(command: list[str], *, input_text: str | None = None) -> dict | list:
     try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            input=input_text,
+        )
     except FileNotFoundError as error:
         raise WarehouseError("bq CLI was not found") from error
     except subprocess.CalledProcessError as error:
