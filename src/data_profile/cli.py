@@ -114,6 +114,9 @@ def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> Non
             f"{progress.current:,} completed queries",
             flush=True,
         )
+        if progress.error:
+            print(f"  Failed query: {label}", flush=True)
+            print(f"  Error details: {progress.error}", flush=True)
     elif progress.event == "storage_failed":
         print(f"[FAILED] Could not update storage · {progress.error}", flush=True)
 

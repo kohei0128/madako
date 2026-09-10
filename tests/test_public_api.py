@@ -189,6 +189,8 @@ def test_failed_profile_returns_result_without_updating_storage(tmp_path: Path) 
     assert len(result.skipped) == 1
     assert events[-1].event == "storage_discarded"
     assert events[-1].current == 0
+    assert events[-1].result == result.failed[0]
+    assert events[-1].error == "warehouse unavailable"
     assert (tmp_path / "models.parquet").read_bytes() == models_before
     assert (tmp_path / "column_profiles.parquet").read_bytes() == profiles_before
 

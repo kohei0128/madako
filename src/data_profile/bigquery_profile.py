@@ -290,7 +290,16 @@ def _run_bq(command: list[str], *, input_text: str | None = None) -> dict | list
     except FileNotFoundError as error:
         raise WarehouseError("bq CLI was not found") from error
     except subprocess.CalledProcessError as error:
-        raise WarehouseError(error.stderr.strip() or "BigQuery command failed") from error
+        operation = "query" if "query" in command else command[1] if len(command) > 1 else "command"
+        summary = f"BigQuery {operation} failed (exit code {error.returncode})"
+        details = []
+        for output in (error.stderr, error.stdout):
+            detail = output.strip() if output else ""
+            if detail and detail not in details:
+                details.append(detail)
+        detail_text = "\n".join(details)
+        message = f"{summary}: {detail_text}" if detail_text else summary
+        raise WarehouseError(message) from error
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as error:
