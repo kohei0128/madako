@@ -352,6 +352,48 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "billed" not in output
 
 
+def test_cli_repeats_failed_query_details_after_abort(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from data_profile.cli import _print_profile_progress
+
+    model = ModelProfile(
+        unique_id="model.demo.broken_view",
+        name="broken_view",
+        database="project",
+        schema_name="dataset",
+        materialization="view",
+        profiling=ProfilingConfig(enabled=True),
+    )
+    item = ProfilePlanItem(
+        model=model,
+        dimension="event_date",
+        sql="SELECT 1",
+        project="project",
+        location="US",
+        model_signature=model.profiling_signature(),
+    )
+    error = "Invalid query: Unrecognized name: missing_column at [4:12]"
+    result = ProfileItemResult(item=item, status="failed", error=error)
+
+    _print_profile_progress(ProfileProgress(
+        event="storage_discarded",
+        current=0,
+        total=1,
+        model=model,
+        dimension=item.dimension,
+        item=item,
+        result=result,
+        error=error,
+    ), tmp_path)
+
+    output = capsys.readouterr().out
+    assert "[ABORTED] Storage unchanged" in output
+    assert "Failed query: model.demo.broken_view / event_date" in output
+    assert "Error details: Invalid query: Unrecognized name: missing_column at [4:12]" in output
+
+
 @pytest.mark.parametrize(("value", "expected"), [
     (0, "0 B"),
     (1_023, "1,023 B"),

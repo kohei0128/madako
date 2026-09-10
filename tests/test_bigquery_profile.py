@@ -1,3 +1,5 @@
+import subprocess
+
 from data_profile.bigquery_profile import ProfilingError, generate_profile_sql, rows_to_profiles
 from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
 
@@ -248,6 +250,27 @@ def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
         monkeypatch.setattr(bq, "_run_bq", lambda *_, payload=payload, **__: payload)
         with pytest.raises(bq.ProfilingError):
             bq.dry_run("sql", "project", "US")
+
+
+def test_bq_failure_preserves_stdout_and_stderr_details(monkeypatch) -> None:
+    import pytest
+    from data_profile import bigquery_profile as bq
+
+    failure = subprocess.CalledProcessError(
+        1,
+        ["bq", "query"],
+        output="BigQuery error: Invalid query: Unrecognized name: missing_column at [4:12]",
+        stderr="ERROR: Query job failed",
+    )
+    monkeypatch.setattr(bq.subprocess, "run", lambda *_, **__: (_ for _ in ()).throw(failure))
+
+    with pytest.raises(bq.WarehouseError) as captured:
+        bq.dry_run("SELECT missing_column FROM broken_view", "project", "US")
+
+    message = str(captured.value)
+    assert "BigQuery query failed (exit code 1)" in message
+    assert "ERROR: Query job failed" in message
+    assert "Unrecognized name: missing_column at [4:12]" in message
 
 
 def test_type_aliases_generate_metrics() -> None:

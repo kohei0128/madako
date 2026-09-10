@@ -208,10 +208,19 @@ class DataProfile:
                     current=len(execution.results), total=len(execution.results),
                 ))
         elif progress is not None:
+            failed = next(
+                (item for item in execution.results if item.status == "failed"),
+                None,
+            )
             progress(ProfileProgress(
                 event="storage_discarded",
                 current=sum(item.status == "succeeded" for item in execution.results),
                 total=len(execution.results),
+                model=failed.item.model if failed else None,
+                dimension=failed.item.dimension if failed else None,
+                item=failed.item if failed else None,
+                result=failed,
+                error=failed.error if failed else None,
             ))
         profiled_models = (
             tuple(dict.fromkeys(item.model.name for item in plan.items))
