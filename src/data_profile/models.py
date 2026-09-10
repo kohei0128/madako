@@ -1,4 +1,6 @@
+import re
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -6,6 +8,25 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 MetricValue = str | int | float | bool | date | None
 PROFILE_COMPUTATION_VERSION = 4
+_BYTE_SIZE_PATTERN = re.compile(
+    r"^(?P<amount>(?:\d+(?:\.\d*)?|\.\d+))\s*(?P<unit>[KMGTPE]?i?B)$",
+    re.IGNORECASE,
+)
+_BYTE_UNIT_MULTIPLIERS = {
+    "B": 1,
+    "KB": 1000,
+    "MB": 1000**2,
+    "GB": 1000**3,
+    "TB": 1000**4,
+    "PB": 1000**5,
+    "EB": 1000**6,
+    "KIB": 1024,
+    "MIB": 1024**2,
+    "GIB": 1024**3,
+    "TIB": 1024**4,
+    "PIB": 1024**5,
+    "EIB": 1024**6,
+}
 
 
 class ColumnProfile(BaseModel):
@@ -80,6 +101,30 @@ class ProfilingConfig(BaseModel):
     max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
     max_bytes_billed: Annotated[int, Field(gt=0)] | None = None
     treat_empty_string_as_null: bool = False
+
+    @field_validator("max_bytes_billed", mode="before")
+    @classmethod
+    def parse_max_bytes_billed(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        if stripped.isdigit():
+            return stripped
+        match = _BYTE_SIZE_PATTERN.fullmatch(stripped)
+        if match is None:
+            raise ValueError(
+                "max_bytes_billed must be a byte count or a size such as '10 GB' or '8 GiB'"
+            )
+        try:
+            byte_count = (
+                Decimal(match.group("amount"))
+                * _BYTE_UNIT_MULTIPLIERS[match.group("unit").upper()]
+            )
+        except InvalidOperation as error:
+            raise ValueError("max_bytes_billed contains an invalid number") from error
+        if byte_count != byte_count.to_integral_value():
+            raise ValueError("max_bytes_billed must resolve to a whole number of bytes")
+        return int(byte_count)
 
 
 class ModelProfile(BaseModel):

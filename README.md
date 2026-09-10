@@ -65,7 +65,7 @@ config:
   meta:
     profiling:
       enabled: true
-      max_bytes_billed: 1000000000
+      max_bytes_billed: "1 GB"
 ```
 
 ### 2. Madakoを設定する
@@ -109,6 +109,8 @@ madako serve
 ```
 
 `madako profile`は、`manifest.json`と`catalog.json`をstorageへ取り込んでからBigQueryをprofileします。dbtコマンド自体はMadakoから実行しません。
+
+`max_bytes_billed`は従来どおりbyte数の整数でも指定できます。読みやすい文字列では、`KB` / `MB` / `GB` / `TB`（10進）と`KiB` / `MiB` / `GiB` / `TiB`（2進）を使用できます。
 
 BigQueryの処理には、インストール・認証済みの`bq` CLIが必要です。
 
