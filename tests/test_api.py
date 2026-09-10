@@ -321,7 +321,7 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
 
 
 def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from data_profile.progress import make_profile_renderer
+    from data_profile.progress import ProfileRenderer
 
     model = ModelProfile(
         name="events",
@@ -345,7 +345,7 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
         bytes_billed=10_485_760,
     )
 
-    make_profile_renderer(tmp_path, verbose=True).event(ProfileProgress(
+    ProfileRenderer(tmp_path, verbose=True).event(ProfileProgress(
         event="execute_completed",
         current=1,
         total=1,
@@ -358,11 +358,11 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "billed" not in output
 
 
-def test_cli_repeats_failed_query_details_after_abort(
+def test_cli_reports_failed_query_once_before_abort(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from data_profile.progress import make_profile_renderer
+    from data_profile.progress import ProfileRenderer
 
     model = ModelProfile(
         unique_id="model.demo.broken_view",
@@ -383,7 +383,11 @@ def test_cli_repeats_failed_query_details_after_abort(
     error = "Invalid query: Unrecognized name: missing_column at [4:12]"
     result = ProfileItemResult(item=item, status="failed", error=error)
 
-    make_profile_renderer(tmp_path).event(ProfileProgress(
+    renderer = ProfileRenderer(tmp_path)
+    renderer.event(ProfileProgress(
+        event="execute_completed", current=1, total=1, item=item, result=result,
+    ))
+    renderer.event(ProfileProgress(
         event="storage_discarded",
         current=0,
         total=1,
@@ -395,9 +399,9 @@ def test_cli_repeats_failed_query_details_after_abort(
     ))
 
     output = capsys.readouterr().out
-    assert "Error: Storage unchanged" in output
-    assert "Failed query: model.demo.broken_view / event_date" in output
-    assert "Error details: Invalid query: Unrecognized name: missing_column at [4:12]" in output
+    assert "Profile results not saved" in output
+    assert "Error: Failed model.demo.broken_view / event_date" in output
+    assert output.count(error) == 1
 
 
 @pytest.mark.parametrize(("value", "expected"), [
@@ -408,9 +412,9 @@ def test_cli_repeats_failed_query_details_after_abort(
     (2 * 1024**3, "2.0 GiB"),
 ])
 def test_cli_formats_byte_units(value: int, expected: str) -> None:
-    from data_profile.cli import _format_bytes
+    from data_profile.progress import format_bytes
 
-    assert _format_bytes(value) == expected
+    assert format_bytes(value) == expected
 
 
 def test_numeric_values_are_serialized_as_exact_strings(tmp_path: Path) -> None:
