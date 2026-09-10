@@ -1,10 +1,10 @@
 # Profile Storage Schema
 
-最終更新: 2026-09-08
+最終更新: 2026-09-10
 
 現在のschema versionは**1**。両ファイルに`schema_version`列を持つ。
 
-MVPのローカル保存は、model metadataとcolumn profileを2つのParquet fileに分ける。
+ローカル保存は、model metadataとcolumn profileを2つのParquet fileに分ける。既定のdirect modeでは次の構造になる。
 
 ```text
 .data-profile/
@@ -13,6 +13,28 @@ MVPのローカル保存は、model metadataとcolumn profileを2つのParquet f
 ```
 
 APIが返す`ModelProfile`は階層構造だが、ParquetではDuckDBから検索・集計しやすいrelationとして保存する。
+
+`madako.toml`でgenerations modeを有効にすると、検証済みの複数世代を保持する。
+
+```toml
+[storage]
+mode = "generations"
+keep_generations = 3
+```
+
+```text
+.data-profile/
+├── current -> generations/gen-0002
+└── generations/
+    ├── gen-0001/
+    │   ├── models.parquet
+    │   └── column_profiles.parquet
+    └── gen-0002/
+        ├── models.parquet
+        └── column_profiles.parquet
+```
+
+`keep_generations`の既定値は3、最小値は2。現在の世代も保持数に含む。generations modeはローカルfilesystemと単一writerを前提とする。
 
 ## models.parquet
 
@@ -112,11 +134,15 @@ Parquet columnは単一の物理型を必要とするが、Min / MaxはNumeric�
 
 ## 書き換え方針
 
-MVPではprofile historyを保持せず、常に最新の2 filesを読み取る。更新時は同じfilesystem上のstage directoryへ両方を書き出し、DuckDBで読み戻せることを検証してから`os.replace`で置き換える。
+direct modeではprofile historyを保持せず、常に最新の2 filesを読み取る。更新時は同じfilesystem上のstage directoryへ両方を書き出し、DuckDBで読み戻せることを検証してから`os.replace`で置き換える。
 
 置換前のfilesはstage内へbackupし、途中のfile置換に失敗した場合は両方の復元を試みる。復元が成功した場合はstageを削除して元の例外を通知する。復元にも失敗した場合はstageと両方のbackupを保持し、`StorageRecoveryError`で復旧directoryを通知する。
 
-書き込みは直列化し、更新完了後に読み込む。複数ファイルの同時切替、同時writer、強制終了のtransaction保証はない。世代directoryと参照先切替は未実装。
+generations modeでは新しい世代directoryへ両方を書き出し、DuckDBで読み戻せることを検証してから、`current` symlinkを`os.replace`で切り替える。readerは切り替え前または切り替え後の完成済み世代を参照する。切り替え後、設定した保持数を超える古い世代をbest effortで削除する。cleanup失敗は正常な保存を取り消さない。
+
+direct modeの2 filesしか存在しないdirectoryをgenerations modeで開いた場合は、そのfilesを読み取る。次回の正常な保存で`gen-0001`と`current`を作成する。移行前のdirect filesは自動削除しない。
+
+どちらのmodeも書き込みは直列化する。generations modeは複数fileの公開切り替えを改善するが、複数writer、強制終了、POSIX互換でないfilesystem上のtransaction保証はない。
 
 ## 復旧手順
 
@@ -127,3 +153,5 @@ MVPではprofile historyを保持せず、常に最新の2 filesを読み取る�
 5. `DataProfile.from_storage(path).models()`で読み取りを確認してからAPIを再開する。確認後にstage directoryを削除する。
 
 初回保存などbackup pairが揃わない場合は、stageを保全したまま新directoryへ再import・再profileする。強制終了後に残ったstageも同様に自動復旧対象ではない。
+
+generations modeで最新世代に問題がある場合は、読み書きを止め、`current` symlinkを保持されている直前の完成済み世代へ切り替える。両方のParquetを`ParquetProfileStorage(path, use_generations=True).load()`で検証してからAPIを再開する。rollback後に保存するときは、切り替え先より新しい番号の世代directoryを退避または削除してから実行する。

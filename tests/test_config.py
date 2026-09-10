@@ -15,6 +15,8 @@ def test_defaults_are_relative_to_working_directory(tmp_path: Path) -> None:
     assert config.location == "asia-northeast1"
     assert config.host == "127.0.0.1"
     assert config.port == 8000
+    assert config.use_generations is None
+    assert config.keep_generations == 3
 
 
 def test_discovers_parent_config_and_resolves_relative_paths(tmp_path: Path) -> None:
@@ -32,6 +34,10 @@ location = "US"
 [server]
 host = "0.0.0.0"
 port = 8123
+
+[storage]
+mode = "generations"
+keep_generations = 5
 """.strip(),
         encoding="utf-8",
     )
@@ -48,11 +54,23 @@ port = 8123
     assert config.location == "US"
     assert config.host == "0.0.0.0"
     assert config.port == 8123
+    assert config.use_generations is True
+    assert config.keep_generations == 5
 
 
 def test_explicit_missing_config_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="Config file not found"):
         load_config(Path("missing.toml"), start_dir=tmp_path)
+
+
+def test_direct_mode_is_explicitly_resolved(tmp_path: Path) -> None:
+    config_file = tmp_path / "madako.toml"
+    config_file.write_text("[storage]\nmode = 'direct'\n", encoding="utf-8")
+
+    config = load_config(config_file)
+
+    assert config.use_generations is False
+    assert config.keep_generations == 3
 
 
 @pytest.mark.parametrize(
@@ -61,6 +79,8 @@ def test_explicit_missing_config_is_rejected(tmp_path: Path) -> None:
         "unknown = true",
         "[server]\nport = 70000",
         "[bigquery]\nlocation = ''",
+        "[storage]\nmode = 'remote'",
+        "[storage]\nkeep_generations = 1",
     ],
 )
 def test_invalid_config_is_rejected(tmp_path: Path, content: str) -> None:

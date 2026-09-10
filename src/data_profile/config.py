@@ -3,6 +3,7 @@
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -31,12 +32,20 @@ class ServerConfig(BaseModel):
     port: int = Field(default=8000, ge=1, le=65535)
 
 
+class StorageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    mode: Literal["direct", "generations"] | None = None
+    keep_generations: int = Field(default=3, ge=2)
+
+
 class ConfigFile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     project: ProjectConfig = ProjectConfig()
     bigquery: BigQueryConfig = BigQueryConfig()
     server: ServerConfig = ServerConfig()
+    storage: StorageConfig = StorageConfig()
 
 
 @dataclass(frozen=True)
@@ -48,6 +57,8 @@ class MadakoConfig:
     location: str
     host: str
     port: int
+    use_generations: bool | None
+    keep_generations: int
 
 
 def find_config(start_dir: Path | None = None) -> Path | None:
@@ -98,4 +109,10 @@ def load_config(
         location=values.bigquery.location,
         host=values.server.host,
         port=values.server.port,
+        use_generations=(
+            values.storage.mode == "generations"
+            if values.storage.mode is not None
+            else None
+        ),
+        keep_generations=values.storage.keep_generations,
     )

@@ -98,6 +98,72 @@ def test_generation_storage_cleans_up_old_generations(tmp_path, sample_model):
     assert not (tmp_path / "generations" / "gen-0002").exists()
 
 
+def test_generation_storage_uses_configured_retention(tmp_path, sample_model):
+    storage = ParquetProfileStorage(
+        tmp_path,
+        use_generations=True,
+        keep_generations=2,
+    )
+
+    for i in range(4):
+        model = sample_model.model_copy(update={"description": f"gen-{i+1}"})
+        storage.save([model])
+
+    generations = sorted(path.name for path in (tmp_path / "generations").iterdir())
+    assert generations == ["gen-0003", "gen-0004"]
+
+
+def test_generation_storage_rejects_retention_below_two(tmp_path):
+    with pytest.raises(ValueError, match="keep_generations must be at least 2"):
+        ParquetProfileStorage(
+            tmp_path,
+            use_generations=True,
+            keep_generations=1,
+        )
+
+
+def test_generation_storage_reads_direct_files_before_first_generation(
+    tmp_path,
+    sample_model,
+):
+    ParquetProfileStorage(tmp_path, use_generations=False).save([sample_model])
+    storage = ParquetProfileStorage(tmp_path, use_generations=True)
+
+    assert storage.exists()
+    assert storage.load()[0].unique_id == sample_model.unique_id
+    assert storage.get_model(sample_model.unique_id).unique_id == sample_model.unique_id
+
+    storage.save([sample_model.model_copy(update={"description": "migrated"})])
+
+    assert (tmp_path / "current").is_symlink()
+    assert storage.load()[0].description == "migrated"
+
+
+def test_generation_storage_preserves_current_when_switch_fails(
+    tmp_path,
+    sample_model,
+    monkeypatch,
+):
+    storage = ParquetProfileStorage(tmp_path, use_generations=True)
+    storage.save([sample_model])
+    original_replace = os.replace
+
+    def fail_current_switch(source, target):
+        if Path(target) == tmp_path / "current":
+            raise OSError("switch failed")
+        return original_replace(source, target)
+
+    monkeypatch.setattr(os, "replace", fail_current_switch)
+
+    with pytest.raises(OSError, match="switch failed"):
+        storage.save([sample_model.model_copy(update={"description": "new"})])
+
+    assert (tmp_path / "current").readlink() == Path("generations/gen-0001")
+    assert not (tmp_path / "generations" / "gen-0002").exists()
+    assert not (tmp_path / ".current-2").exists()
+    assert storage.load()[0].description == ""
+
+
 def test_generation_storage_exists_checks_symlink(tmp_path, sample_model):
     """Test that exists() correctly checks generation directory structure."""
     storage = ParquetProfileStorage(tmp_path, use_generations=True)
@@ -143,3 +209,12 @@ def test_direct_mode_still_works_by_default(tmp_path, sample_model):
     loaded = storage.load()
     assert len(loaded) == 1
     assert loaded[0].unique_id == sample_model.unique_id
+
+
+def test_environment_switch_remains_supported(tmp_path, sample_model, monkeypatch):
+    monkeypatch.setenv("DATA_PROFILE_USE_GENERATIONS", "1")
+
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([sample_model])
+
+    assert (tmp_path / "current").is_symlink()

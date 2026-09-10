@@ -2,10 +2,21 @@ import argparse
 from pathlib import Path
 
 from data_profile.api import DataProfile, ProfilePlan
-from data_profile.config import load_config
+from data_profile.config import MadakoConfig, load_config
 from data_profile.planning import ProfileProgress
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
+
+
+def _storage(
+    config: MadakoConfig,
+    directory: Path | None = None,
+) -> ParquetProfileStorage:
+    return ParquetProfileStorage(
+        directory or config.storage_dir,
+        use_generations=config.use_generations,
+        keep_generations=config.keep_generations,
+    )
 
 
 def _format_bytes(value: int) -> str:
@@ -162,7 +173,7 @@ def main() -> None:
             raise SystemExit(
                 "Web dependencies are not installed; install madako[web]"
             ) from error
-        storage = ParquetProfileStorage(args.storage_dir or config.storage_dir)
+        storage = _storage(config, args.storage_dir)
         uvicorn.run(
             create_app(storage),
             host=args.host or config.host,
@@ -170,21 +181,28 @@ def main() -> None:
         )
     elif args.command == "build-sample":
         output_dir = args.output_dir or config.storage_dir
+        storage = _storage(config, output_dir)
         models_path, profiles_path = (
-            build_parquet_fixture(args.source, output_dir) if args.source
-            else ParquetProfileStorage(output_dir).save(sample_models())
+            build_parquet_fixture(args.source, output_dir, storage=storage)
+            if args.source
+            else storage.save(sample_models())
         )
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
     elif args.command == "import-dbt":
         project_dir = args.project_dir or config.dbt_project_dir
         output_dir = args.output_dir or config.storage_dir
-        DataProfile.from_dbt_project(project_dir, output_dir)
-        models_path, profiles_path = ParquetProfileStorage(output_dir).paths
+        storage = _storage(config, output_dir)
+        DataProfile.from_dbt_project(project_dir, output_dir, storage=storage)
+        models_path, profiles_path = storage.paths
         print(f"Wrote {models_path}")
         print(f"Wrote {profiles_path}")
     elif args.command == "plan":
-        data_profile = DataProfile.from_storage(args.storage_dir or config.storage_dir)
+        storage_dir = args.storage_dir or config.storage_dir
+        data_profile = DataProfile.from_storage(
+            storage_dir,
+            storage=_storage(config, storage_dir),
+        )
         plan_result = data_profile.plan(
             select=args.select,
             project=args.project or config.bigquery_project,
@@ -197,6 +215,7 @@ def main() -> None:
         data_profile = DataProfile.from_dbt_project(
             config.dbt_project_dir,
             storage_dir,
+            storage=_storage(config, storage_dir),
         )
         print("[IMPORTED] dbt artifacts are ready", flush=True)
         def report_progress(event: ProfileProgress) -> None:
