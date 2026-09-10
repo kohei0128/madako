@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Madako — Profiled relations filter mock</title>
+  <style>
+    :root {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #17201e;
+      background: #f5f7f6;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 860px; }
+    button, input { font: inherit; }
+    button:focus-visible, input:focus-visible { outline: 2px solid #8ee3be; outline-offset: 2px; }
+    .shell { min-height: 100vh; display: grid; grid-template-columns: 280px minmax(0, 1fr); }
+    .explorer {
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+      padding: 20px 14px; color: #dbe8e3; background: #10201c;
+    }
+    .brand { margin: 0 8px 20px; font-size: 17px; font-weight: 750; letter-spacing: -.03em; }
+    .brand span {
+      margin-left: 6px; padding: 3px 7px; color: #8ee3be; border: 1px solid #376c59;
+      border-radius: 20px; font-size: 9px; vertical-align: 2px;
+    }
+    .control-label {
+      display: block; margin: 0 8px 6px; color: #87a199; font-size: 9px;
+      letter-spacing: .12em; text-transform: uppercase;
+    }
+    .search { position: relative; display: block; margin-bottom: 10px; }
+    .search input {
+      width: 100%; padding: 9px 30px 9px 10px; color: #fff; background: #1c302a;
+      border: 1px solid #385048; border-radius: 5px; outline: none;
+    }
+    .search input:focus { border-color: #72d5ad; }
+    .search svg { position: absolute; top: 9px; right: 10px; width: 15px; color: #6f9286; }
+    .scope {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin-bottom: 9px; padding: 3px;
+      background: #0b1815; border: 1px solid #29443b; border-radius: 6px;
+    }
+    .scope button {
+      display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 6px;
+      color: #8ba49b; background: transparent; border: 0; border-radius: 4px; cursor: pointer;
+      font-size: 10px; font-weight: 650;
+    }
+    .scope button:hover { color: #dbe8e3; background: #182c26; }
+    .scope button.active { color: #e9f8f1; background: #27443a; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+    .scope small { color: #75998b; font-size: 9px; font-weight: 500; }
+    .scope button.active small { color: #8ee3be; }
+    .filter-summary {
+      display: flex; align-items: center; justify-content: space-between; margin: 0 8px 19px;
+      color: #718e84; font-size: 9px;
+    }
+    .filter-summary .profile-key { display: flex; align-items: center; gap: 5px; }
+    .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+    .status-dot.profiled { background: #72d5ad; box-shadow: 0 0 0 2px rgba(114, 213, 173, .12); }
+    .tree-label {
+      display: block; margin: 0 8px 6px; color: #87a199; font-size: 9px;
+      letter-spacing: .12em; text-transform: uppercase;
+    }
+    .project-name {
+      display: flex; align-items: center; gap: 7px; padding: 7px 8px 4px;
+      color: #6f9286; font-size: 9px; letter-spacing: .04em;
+    }
+    .project-name span { color: #54bf94; font-size: 7px; }
+    .dataset-group { margin-bottom: 2px; }
+    .dataset-item {
+      width: 100%; display: grid; grid-template-columns: 11px 16px minmax(0, 1fr) auto;
+      align-items: center; gap: 5px; padding: 7px 8px; color: #c2d6cf; background: transparent;
+      border: 0; border-radius: 4px; text-align: left; cursor: pointer;
+    }
+    .dataset-item:hover { background: #1b332b; }
+    .chevron { color: #75968a; font-size: 16px; line-height: 10px; transition: transform 120ms ease; }
+    .dataset-item.open .chevron { transform: rotate(90deg); }
+    .dataset-icon { color: #66c9a2; font-size: 11px; }
+    .dataset-name { overflow: hidden; font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+    .dataset-item small { color: #76978b; font-size: 9px; }
+    .dataset-relations { margin-left: 13px; padding-left: 8px; border-left: 1px solid #29483e; }
+    .model-item {
+      width: 100%; display: grid; grid-template-columns: 14px minmax(0, 1fr) 10px; gap: 7px;
+      align-items: center; padding: 7px 8px; color: #dbe8e3; background: transparent;
+      border: 0; border-radius: 4px; text-align: left; cursor: pointer;
+    }
+    .model-item:hover, .model-item.selected { background: #27443a; }
+    .model-item .table-icon { color: #74d7af; font-size: 11px; }
+    .model-item .relation-name { min-width: 0; overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .model-item .relation-name small {
+      display: block; margin-bottom: 2px; color: #76978b; font-size: 8px; line-height: 1;
+      text-transform: uppercase;
+    }
+    .model-item .status-dot:not(.profiled) { border: 1px solid #537067; background: transparent; }
+    .empty-tree { margin: 26px 10px; color: #718e84; font-size: 10px; line-height: 1.5; text-align: center; }
+    .detail { padding: 28px clamp(24px, 4vw, 56px) 48px; overflow: hidden; }
+    .mock-note {
+      display: flex; align-items: center; gap: 9px; max-width: 1400px; margin-bottom: 24px;
+      padding: 8px 10px; color: #527065; background: #edf5f1; border: 1px dashed #aec9be;
+      border-radius: 5px; font-size: 10px;
+    }
+    .mock-note strong { color: #176846; font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }
+    header { max-width: 1400px; }
+    .eyebrow { margin-bottom: 5px; color: #63736e; font-size: 11px; }
+    .title-row { display: flex; align-items: center; gap: 9px; }
+    h1 { margin: 0; font-size: 25px; letter-spacing: -.035em; }
+    .pill { padding: 3px 7px; color: #176846; background: #dcf3e8; border-radius: 20px; font-size: 9px; font-weight: 700; }
+    header p { margin: 7px 0 10px; color: #5f6e69; font-size: 12px; }
+    .metadata { display: flex; align-items: baseline; gap: 20px; color: #6d7c77; font-size: 10px; }
+    .metadata b { color: #24332e; }
+    .profile-by {
+      display: flex; align-items: center; min-height: 34px; gap: 10px; margin-top: 22px; padding: 7px 0;
+      border-top: 1px solid #dfe5e3; border-bottom: 1px solid #dfe5e3;
+    }
+    .profile-by > span { color: #687772; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .segments { display: flex; gap: 2px; }
+    .segments button { padding: 5px 9px; color: #5d6d67; background: transparent; border: 0; border-radius: 4px; font-size: 11px; }
+    .segments button.active { color: #155b40; background: #dff1e9; }
+    .columns-heading { display: flex; align-items: end; margin: 20px 0 8px; }
+    .columns-heading h2 { display: inline; margin: 0 8px 0 0; font-size: 17px; }
+    .columns-heading span { color: #74827e; font-size: 10px; }
+    .type-tabs { display: flex; margin-left: auto; border-bottom: 1px solid #cfd8d5; }
+    .type-tabs button { position: relative; padding: 6px 10px; color: #5d6d67; background: transparent; border: 0; font-size: 10px; }
+    .type-tabs button.active { color: #176846; font-weight: 700; }
+    .type-tabs button.active::after { content: ""; position: absolute; right: 7px; bottom: -1px; left: 7px; height: 2px; background: #2b9d70; }
+    .table-wrap { width: 100%; background: #fff; border: 1px solid #d7dfdc; box-shadow: 0 2px 8px rgba(22,46,38,.025); }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td { padding: 9px 12px; border-right: 1px solid #e7ecea; border-bottom: 1px solid #e3e8e6; text-align: left; }
+    th { color: #667670; background: #f1f4f3; font-size: 9px; letter-spacing: .07em; text-transform: uppercase; }
+    td { color: #34433e; font-size: 11px; }
+    th:first-child, td:first-child { width: 36%; }
+    th:last-child, td:last-child { border-right: 0; }
+    tbody tr:last-child td { border-bottom: 0; }
+    .column-name strong, .column-name small { display: block; }
+    .column-name small { margin-top: 2px; color: #7b8985; font-size: 9px; }
+    code { padding: 2px 5px; color: #21684e; background: #edf6f2; border-radius: 3px; font-size: 9px; }
+    .bar { position: relative; width: 130px; height: 17px; background: linear-gradient(90deg, #ef9973 var(--rate), #e9efec var(--rate)); }
+    .bar span { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 5px; font-size: 9px; font-weight: 700; }
+    .profile-status {
+      display: flex; align-items: baseline; gap: 10px; margin-top: 22px; padding: 9px 11px;
+      color: #687772; background: #eef3f1; border-left: 2px solid #8ba89c; font-size: 10px;
+    }
+    .profile-status strong { color: #31443d; font-size: 11px; }
+    .decision-card {
+      max-width: 1400px; margin-top: 34px; padding: 18px 20px; color: #42564f; background: #fff;
+      border: 1px solid #d7dfdc; border-radius: 6px; font-size: 11px;
+    }
+    .decision-card h2 { margin: 0 0 10px; color: #20302b; font-size: 14px; }
+    .decision-card ul { margin: 0; padding-left: 18px; line-height: 1.7; }
+    @media (max-width: 960px) { .shell { grid-template-columns: 240px minmax(0, 1fr); } .detail { padding: 24px 20px; } }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <aside class="explorer">
+      <div class="brand">Madako <span>MOCK</span></div>
+      <label class="control-label" for="search">Search relations</label>
+      <label class="search">
+        <input id="search" type="search" placeholder="Model or source name" autocomplete="off" />
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+      </label>
+      <div class="scope" role="group" aria-label="Filter relations by profile status">
+        <button type="button" class="active" data-scope="all">All <small id="all-count"></small></button>
+        <button type="button" data-scope="profiled"><span class="status-dot profiled"></span>Profiled <small id="profiled-count"></small></button>
+      </div>
+      <div class="filter-summary"><span id="visible-summary"></span><span class="profile-key"><span class="status-dot profiled"></span>has profile</span></div>
+      <span class="tree-label">Catalog</span>
+      <div id="tree"></div>
+    </aside>
+
+    <section class="detail">
+      <div class="mock-note"><strong>Issue #24 mock</strong><span>Try “Profiled” and search together. The detail area is intentionally unchanged.</span></div>
+      <div id="detail"></div>
+      <aside class="decision-card">
+        <h2>What this mock proposes</h2>
+        <ul>
+          <li>The profile filter lives beside search because both narrow the catalog tree.</li>
+          <li>A green dot makes profiled relations recognizable even before filtering.</li>
+          <li>Dataset counts reflect the current search and status filter; empty datasets disappear.</li>
+          <li>If the current relation is filtered out, the first remaining relation becomes selected.</li>
+        </ul>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const relations = [
+      { project: "analytics-prod", schema: "core", type: "model", name: "customers", profiled: true, rows: 184320, columns: 14, description: "Canonical customer dimension with lifecycle attributes." },
+      { project: "analytics-prod", schema: "core", type: "model", name: "orders", profiled: true, rows: 2849120, columns: 22, description: "One row per completed or pending order." },
+      { project: "analytics-prod", schema: "core", type: "model", name: "products", profiled: false, columns: 18, description: "Product catalog enriched with merchandising attributes." },
+      { project: "analytics-prod", schema: "core", type: "model", name: "subscriptions", profiled: false, columns: 11, description: "Current subscription state by customer." },
+      { project: "analytics-prod", schema: "finance", type: "model", name: "daily_revenue", profiled: true, rows: 1096, columns: 9, description: "Daily recognized revenue by market and product." },
+      { project: "analytics-prod", schema: "finance", type: "model", name: "invoice_lines", profiled: false, columns: 26, description: "Normalized invoice line items." },
+      { project: "analytics-prod", schema: "marketing", type: "model", name: "campaign_performance", profiled: false, columns: 31, description: "Campaign delivery and conversion measures." },
+      { project: "analytics-prod", schema: "marketing", type: "model", name: "funnel_events", profiled: true, rows: 8291022, columns: 17, description: "Normalized customer funnel events." },
+      { project: "raw-prod", schema: "stripe", type: "source", name: "charges", profiled: true, rows: 4983311, columns: 28, description: "Raw Stripe charge records." },
+      { project: "raw-prod", schema: "stripe", type: "source", name: "refunds", profiled: false, columns: 19, description: "Raw Stripe refund records." },
+      { project: "raw-prod", schema: "salesforce", type: "source", name: "accounts", profiled: false, columns: 64, description: "Raw Salesforce accounts." },
+      { project: "raw-prod", schema: "salesforce", type: "source", name: "opportunities", profiled: false, columns: 71, description: "Raw Salesforce opportunities." }
+    ];
+
+    const state = { scope: "all", query: "", selected: relations[1], closed: new Set() };
+    const tree = document.querySelector("#tree");
+    const detail = document.querySelector("#detail");
+    const search = document.querySelector("#search");
+    const allCount = relations.length;
+    const profiledCount = relations.filter((item) => item.profiled).length;
+    document.querySelector("#all-count").textContent = allCount;
+    document.querySelector("#profiled-count").textContent = profiledCount;
+
+    function key(item) { return `${item.project}/${item.schema}`; }
+    function visibleRelations() {
+      const query = state.query.trim().toLowerCase();
+      return relations.filter((item) =>
+        (state.scope === "all" || item.profiled) &&
+        (!query || `${item.project} ${item.schema} ${item.type} ${item.name}`.toLowerCase().includes(query))
+      );
+    }
+    function grouped(items) {
+      const projects = new Map();
+      for (const item of items) {
+        if (!projects.has(item.project)) projects.set(item.project, new Map());
+        const schemas = projects.get(item.project);
+        if (!schemas.has(item.schema)) schemas.set(item.schema, []);
+        schemas.get(item.schema).push(item);
+      }
+      return projects;
+    }
+    function renderTree() {
+      const visible = visibleRelations();
+      document.querySelector("#visible-summary").textContent = `Showing ${visible.length} of ${allCount}`;
+      if (!visible.includes(state.selected) && visible.length) state.selected = visible[0];
+      if (!visible.length) {
+        tree.innerHTML = '<div class="empty-tree">No relations match this search and profile filter.</div>';
+        renderDetail();
+        return;
+      }
+      tree.innerHTML = "";
+      for (const [project, schemas] of grouped(visible)) {
+        const projectBlock = document.createElement("div");
+        projectBlock.innerHTML = `<div class="project-name"><span>●</span>${project}</div>`;
+        for (const [schema, items] of schemas) {
+          const datasetKey = `${project}/${schema}`;
+          const isOpen = !state.closed.has(datasetKey);
+          const group = document.createElement("div");
+          group.className = "dataset-group";
+          group.innerHTML = `<button class="dataset-item ${isOpen ? "open" : ""}" type="button"><span class="chevron">›</span><span class="dataset-icon">▤</span><span class="dataset-name">${schema}</span><small>${items.length}</small></button>`;
+          group.querySelector("button").addEventListener("click", () => {
+            state.closed.has(datasetKey) ? state.closed.delete(datasetKey) : state.closed.add(datasetKey);
+            renderTree();
+          });
+          if (isOpen) {
+            const list = document.createElement("div");
+            list.className = "dataset-relations";
+            for (const item of items.sort((a, b) => a.name.localeCompare(b.name))) {
+              const button = document.createElement("button");
+              button.type = "button";
+              button.className = `model-item ${item === state.selected ? "selected" : ""}`;
+              button.innerHTML = `<span class="table-icon">${item.type === "source" ? "◇" : "▦"}</span><span class="relation-name"><small>${item.type}</small>${item.name}</span><span class="status-dot ${item.profiled ? "profiled" : ""}" title="${item.profiled ? "Profile available" : "Profile not generated"}"></span>`;
+              button.addEventListener("click", () => { state.selected = item; renderTree(); renderDetail(); });
+              list.append(button);
+            }
+            group.append(list);
+          }
+          projectBlock.append(group);
+        }
+        tree.append(projectBlock);
+      }
+      renderDetail();
+    }
+    function renderDetail() {
+      const item = state.selected;
+      if (!item || !visibleRelations().length) {
+        detail.innerHTML = '<div class="profile-status"><strong>No matching relations</strong><span>Clear search or switch to All.</span></div>';
+        return;
+      }
+      const profiledBody = `
+        <div class="profile-by"><span>Profile by</span><div class="segments"><button class="active">Overall</button><button>event_date</button></div></div>
+        <div class="columns-heading"><div><h2>Columns</h2><span>4 of ${item.columns}</span></div><div class="type-tabs"><button class="active">All</button><button>String</button><button>Numeric</button><button>Date/Time</button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Column</th><th>Type</th><th>Null</th><th>Metrics</th></tr></thead><tbody>
+          <tr><td class="column-name"><strong>customer_id</strong><small>Stable customer identifier</small></td><td><code>STRING</code></td><td><div class="bar" style="--rate:0%"><span>0.0%</span></div></td><td>184,320 distinct</td></tr>
+          <tr><td class="column-name"><strong>event_date</strong><small>Business event date</small></td><td><code>DATE</code></td><td><div class="bar" style="--rate:1.2%"><span>1.2%</span></div></td><td>2024-01-01 → 2026-09-10</td></tr>
+          <tr><td class="column-name"><strong>amount</strong><small>Amount in local currency</small></td><td><code>NUMERIC</code></td><td><div class="bar" style="--rate:3.8%"><span>3.8%</span></div></td><td>0 → 49,800</td></tr>
+          <tr><td class="column-name"><strong>is_active</strong><small>Current active state</small></td><td><code>BOOL</code></td><td><div class="bar" style="--rate:.4%"><span>0.4%</span></div></td><td>TRUE 81.4%</td></tr>
+        </tbody></table></div>`;
+      const metadataBody = `
+        <div class="profile-status"><strong>Metadata available</strong><span>Profiling metrics have not been generated for this relation yet.</span></div>
+        <div class="columns-heading"><div><h2>Columns</h2><span>${item.columns}</span></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead><tbody>
+          <tr><td class="column-name"><strong>id</strong></td><td><code>STRING</code></td><td>Primary identifier</td></tr>
+          <tr><td class="column-name"><strong>created_at</strong></td><td><code>TIMESTAMP</code></td><td>Record creation time</td></tr>
+          <tr><td class="column-name"><strong>status</strong></td><td><code>STRING</code></td><td>Current lifecycle status</td></tr>
+        </tbody></table></div>`;
+      detail.innerHTML = `<header><div class="eyebrow">${item.project} / ${item.schema}</div><div class="title-row"><h1>${item.name}</h1><span class="pill">${item.type === "source" ? "source" : "table"}</span></div><p>${item.description}</p><div class="metadata">${item.profiled ? `<span><b>${item.rows.toLocaleString()}</b> total rows</span><span>Profiled Sep 10, 2026, 7:24 PM</span>` : `<span>${item.columns} columns</span><span>Profile not generated</span>`}<span>4 dbt tests</span></div></header>${item.profiled ? profiledBody : metadataBody}`;
+    }
+
+    document.querySelectorAll(".scope button").forEach((button) => button.addEventListener("click", () => {
+      state.scope = button.dataset.scope;
+      document.querySelectorAll(".scope button").forEach((item) => item.classList.toggle("active", item === button));
+      renderTree();
+    }));
+    search.addEventListener("input", () => { state.query = search.value; renderTree(); });
+    renderTree();
+  </script>
+</body>
+</html>

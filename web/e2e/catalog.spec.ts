@@ -46,6 +46,30 @@ test("refreshes metadata and keeps the selected relation", async ({ page }) => {
   await expect(source).toHaveClass(/selected/);
 });
 
+test("filters the catalog to profiled relations and combines with search", async ({ page }) => {
+  const explorer = page.locator(".explorer");
+  const relationFilter = explorer.getByRole("group", { name: "Filter relations by profile status" });
+  const profiled = relationFilter.getByRole("button", { name: "Profiled 1" });
+
+  await expect(explorer.locator(".profile-indicator.profiled")).toHaveCount(3);
+  await explorer.getByRole("button", { name: /source events$/ }).click();
+  await profiled.click();
+
+  await expect(profiled).toHaveAttribute("aria-pressed", "true");
+  await expect(explorer.locator(".model-item")).toHaveCount(1);
+  await expect(explorer.locator(".filter-summary")).toContainText("Showing 1 of 5");
+  await expect(page).toHaveURL(/\/relations\/model\.phase4\.events$/);
+  await expect(page.getByText("10 total rows")).toBeVisible();
+
+  await explorer.getByPlaceholder("Model or source name").fill("users");
+  await expect(explorer.locator(".model-item")).toHaveCount(0);
+  await expect(explorer.getByText("No relations match this search and profile filter.")).toBeVisible();
+
+  await relationFilter.getByRole("button", { name: "All 5" }).click();
+  await expect(explorer.locator(".model-item")).toHaveCount(1);
+  await expect(explorer.getByRole("button", { name: /source users$/ })).toBeVisible();
+});
+
 test("shows date dimension values in descending order with null last", async ({ page }) => {
   const profileBy = page.locator(".profile-by");
   const overallPosition = await profileBy.boundingBox();
