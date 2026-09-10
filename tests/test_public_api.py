@@ -355,6 +355,33 @@ def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch
     assert (persisted.profiled_at is not None) is not changed
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("enabled", False), ("max_bytes_billed", 20_000)],
+)
+def test_reimport_preserves_profiles_when_execution_controls_change(
+    tmp_path: Path,
+    monkeypatch,
+    field: str,
+    value: bool | int,
+) -> None:
+    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+
+    model = configured_model()
+    write_profile_storage([model], tmp_path)
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    assert app.profile().successful
+    setattr(model.profiling, field, value)
+    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [model])
+
+    import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
+
+    persisted = app.models()[0]
+    assert persisted.profiles
+    assert persisted.profiled_at is not None
+    assert getattr(persisted.profiling, field) == value
+
+
 def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Path, monkeypatch) -> None:
     from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
     current = configured_model()
