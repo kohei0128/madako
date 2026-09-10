@@ -3,8 +3,8 @@ import warnings
 from datetime import datetime
 from pathlib import Path
 
-from data_profile.exceptions import DataProfileError
-from data_profile.models import ColumnMetadata, ModelProfile
+from madako.exceptions import DataProfileError
+from madako.models import ColumnMetadata, ModelProfile
 
 
 class ArtifactError(DataProfileError):

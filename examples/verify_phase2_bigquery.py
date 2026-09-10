@@ -7,9 +7,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from data_profile import DataProfile
-from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
-from data_profile.storage import ParquetProfileStorage
+from madako import DataProfile
+from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.storage import ParquetProfileStorage
 
 
 DEFAULT_LOCATION = "asia-northeast1"
@@ -264,9 +264,9 @@ def main() -> None:
     parser.add_argument("--location", default=DEFAULT_LOCATION)
     parser.add_argument("--keep-dataset", action="store_true")
     args = parser.parse_args()
-    if not re.fullmatch(r"data_profile_phase2_[a-z0-9_]+", args.dataset):
+    if not re.fullmatch(r"madako_phase2_[a-z0-9_]+", args.dataset):
         raise SystemExit(
-            "dataset must start with data_profile_phase2_ and contain "
+            "dataset must start with madako_phase2_ and contain "
             "lowercase letters, numbers, or underscores"
         )
 

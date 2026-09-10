@@ -7,11 +7,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from data_profile.api import DataProfile, ProfilePlan
-from data_profile.cli import main
-from data_profile.exceptions import PlanningError
-from data_profile.planning import ProfileProgress
-from data_profile.progress import ProfileRenderer
+from madako.api import DataProfile, ProfilePlan
+from madako.cli import main
+from madako.exceptions import PlanningError
+from madako.planning import ProfileProgress
+from madako.progress import ProfileRenderer
 
 
 class Terminal(StringIO):
@@ -57,7 +57,7 @@ def test_cli_cleans_up_every_phase_and_reports_errors_once(
     monkeypatch.setenv("TERM", "xterm")
     monkeypatch.setattr(sys, "stdout", output)
     monkeypatch.setattr(sys, "argv", ["madako", "profile"] + (["-v"] if verbose else []))
-    monkeypatch.setattr("data_profile.cli.ProfileRenderer", renderer)
+    monkeypatch.setattr("madako.cli.ProfileRenderer", renderer)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(DataProfile, "from_dbt_project", import_dbt)
 

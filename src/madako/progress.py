@@ -12,8 +12,8 @@ from threading import Event, Lock, Thread
 from time import monotonic
 from typing import TextIO
 
-from data_profile.api import ProfilePlan, ProfileResult
-from data_profile.planning import ProfileProgress
+from madako.api import ProfilePlan, ProfileResult
+from madako.planning import ProfileProgress
 
 
 def format_bytes(value: int) -> str:

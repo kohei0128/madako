@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from data_profile import DataProfile
-from data_profile.dbt_artifacts import ArtifactError, read_dbt_artifacts
-from data_profile.repository import DuckDBProfileRepository
-from data_profile.storage import ParquetProfileStorage
+from madako import DataProfile
+from madako.dbt_artifacts import ArtifactError, read_dbt_artifacts
+from madako.repository import DuckDBProfileRepository
+from madako.storage import ParquetProfileStorage
 
 
 @pytest.fixture

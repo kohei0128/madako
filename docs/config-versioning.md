@@ -164,9 +164,9 @@ profile保存時に`models.parquet.profile_version`へ記録する。dbt artifac
 
 ### 関連ファイル
 
-- `src/data_profile/models.py`: ProfilingConfig, ModelProfile定義
-- `src/data_profile/storage.py`: Parquet schema version管理
-- `src/data_profile/repository.py`: Schema version検証
+- `src/madako/models.py`: ProfilingConfig, ModelProfile定義
+- `src/madako/storage.py`: Parquet schema version管理
+- `src/madako/repository.py`: Schema version検証
 - `docs/phase3-contracts-design.md`: 設計方針の詳細
 
 ### 関連テスト

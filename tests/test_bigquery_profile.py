@@ -1,7 +1,7 @@
 import subprocess
 
-from data_profile.bigquery_profile import ProfilingError, generate_profile_sql, rows_to_profiles
-from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.bigquery_profile import ProfilingError, generate_profile_sql, rows_to_profiles
+from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
 
 
 def model() -> ModelProfile:
@@ -162,7 +162,7 @@ def test_reconstructs_separate_null_empty_and_missing_metrics() -> None:
 
 def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
     import pytest
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
     monkeypatch.setattr(bq, "MAX_RESULT_ROWS", 2)
     monkeypatch.setattr(bq, "_run_bq", lambda *_, **__: [{}, {}])
     with pytest.raises(bq.ProfilingError, match="row limit"):
@@ -170,7 +170,7 @@ def test_bq_result_limit_is_not_silently_saved(monkeypatch) -> None:
 
 
 def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
 
     calls: list[tuple[list[str], str | None]] = []
     responses = iter([
@@ -203,7 +203,7 @@ def test_execute_profile_returns_job_byte_usage(monkeypatch) -> None:
 
 
 def test_execute_profile_applies_optional_maximum_bytes(monkeypatch) -> None:
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
 
     calls: list[tuple[list[str], str | None]] = []
     responses = iter([
@@ -226,7 +226,7 @@ def test_execute_profile_applies_optional_maximum_bytes(monkeypatch) -> None:
 
 
 def test_dry_run_passes_query_through_standard_input(monkeypatch) -> None:
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
 
     calls: list[tuple[list[str], str | None]] = []
     long_sql = "SELECT " + ", ".join(f"{index} AS column_{index}" for index in range(10_000))
@@ -245,7 +245,7 @@ def test_dry_run_passes_query_through_standard_input(monkeypatch) -> None:
 
 def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
     import pytest
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
     for payload in [{}, [], {"statistics": {"totalBytesProcessed": -1}}]:
         monkeypatch.setattr(bq, "_run_bq", lambda *_, payload=payload, **__: payload)
         with pytest.raises(bq.ProfilingError):
@@ -254,7 +254,7 @@ def test_missing_dry_run_estimate_is_not_zero(monkeypatch) -> None:
 
 def test_bq_failure_preserves_stdout_and_stderr_details(monkeypatch) -> None:
     import pytest
-    from data_profile import bigquery_profile as bq
+    from madako import bigquery_profile as bq
 
     failure = subprocess.CalledProcessError(
         1,

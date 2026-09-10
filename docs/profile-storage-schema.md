@@ -7,7 +7,7 @@
 ローカル保存は、model metadataとcolumn profileを2つのParquet fileに分ける。既定のdirect modeでは次の構造になる。
 
 ```text
-.data-profile/
+.madako/
 ├── models.parquet
 └── column_profiles.parquet
 ```
@@ -23,7 +23,7 @@ keep_generations = 3
 ```
 
 ```text
-.data-profile/
+.madako/
 ├── current -> generations/gen-0002
 └── generations/
     ├── gen-0001/

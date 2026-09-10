@@ -5,12 +5,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from data_profile.models import ModelProfile
-from data_profile.repository import AmbiguousProfileError, ProfileNotFoundError
-from data_profile.storage import ParquetProfileStorage, ProfileStorage
+from madako.models import ModelProfile
+from madako.repository import AmbiguousProfileError, ProfileNotFoundError
+from madako.storage import ParquetProfileStorage, ProfileStorage
 
 
-DEFAULT_STORAGE_DIR = Path(".data-profile")
+DEFAULT_STORAGE_DIR = Path(".madako")
 WEB_DIST_DIR = Path(__file__).with_name("web_dist")
 
 

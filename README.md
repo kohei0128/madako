@@ -166,7 +166,7 @@ Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更�
 CLIと同じ処理はPythonからも利用できます。
 
 ```python
-from data_profile import DataProfile
+from madako import DataProfile
 
 catalog = DataProfile.from_dbt_project(
     project_dir="path/to/dbt-project",

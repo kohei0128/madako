@@ -8,13 +8,13 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from data_profile.api import DataProfile
-from data_profile.cli import main as cli_main
-from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
-from data_profile.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
-from data_profile.server import create_app
-from data_profile.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
-from data_profile.sample import sample_models
+from madako.api import DataProfile
+from madako.cli import main as cli_main
+from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
+from madako.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
+from madako.server import create_app
+from madako.storage import ParquetProfileStorage, build_parquet_fixture, write_profile_storage
+from madako.sample import sample_models
 
 
 @pytest.fixture
@@ -321,7 +321,7 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
 
 
 def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from data_profile.progress import ProfileRenderer
+    from madako.progress import ProfileRenderer
 
     model = ModelProfile(
         name="events",
@@ -362,7 +362,7 @@ def test_cli_reports_failed_query_once_before_abort(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from data_profile.progress import ProfileRenderer
+    from madako.progress import ProfileRenderer
 
     model = ModelProfile(
         unique_id="model.demo.broken_view",
@@ -412,7 +412,7 @@ def test_cli_reports_failed_query_once_before_abort(
     (2 * 1024**3, "2.0 GiB"),
 ])
 def test_cli_formats_byte_units(value: int, expected: str) -> None:
-    from data_profile.progress import format_bytes
+    from madako.progress import format_bytes
 
     assert format_bytes(value) == expected
 

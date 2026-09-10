@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
+from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 
 
 def sample_models() -> list[ModelProfile]:

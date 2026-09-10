@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from data_profile.config import find_config, load_config
+from madako.config import find_config, load_config
 
 
 def test_defaults_are_relative_to_working_directory(tmp_path: Path) -> None:
@@ -10,7 +10,7 @@ def test_defaults_are_relative_to_working_directory(tmp_path: Path) -> None:
 
     assert config.source is None
     assert config.dbt_project_dir == tmp_path
-    assert config.storage_dir == tmp_path / ".data-profile"
+    assert config.storage_dir == tmp_path / ".madako"
     assert config.bigquery_project is None
     assert config.location == "asia-northeast1"
     assert config.threads == 4
