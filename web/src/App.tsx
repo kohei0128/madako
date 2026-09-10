@@ -497,6 +497,9 @@ function App() {
 
   function selectModel(id: string) {
     const selected = models.find((item) => item.unique_id === id);
+    if (selected?.profiled_at === null) setRelationFilter("all");
+    if (selected && query.trim() && ![selected.name, selected.schema, selected.database, selected.resource_type]
+      .some((value) => value.toLowerCase().includes(query.trim().toLowerCase()))) setQuery("");
     setSelectedModel(id);
     setSliceIndex(0);
     setTypeFilter("all");
