@@ -312,14 +312,16 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
     )
     assert calls[2] == ("run", plan, 8)
     output = capsys.readouterr().out
-    assert "[IMPORT] Reading dbt artifacts" in output
-    assert "[SKIPPED 1/1] model.demo.events / user_id" in output
+    assert "Importing dbt artifacts" in output
+    assert "Imported dbt artifacts" in output
+    assert "Planning queries" in output
+    assert "Warning: Skipped model.demo.events / user_id" in output
     assert "1,284,392 distinct values exceeds the 10,000 limit" in output
-    assert "[COMPLETE] Profiled 0 models with 0 queries" in output
+    assert "Profile complete: 0 relations, 0 queries, 1 skipped" in output
 
 
 def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    from data_profile.cli import _print_profile_progress
+    from data_profile.progress import make_profile_renderer
 
     model = ModelProfile(
         name="events",
@@ -343,13 +345,13 @@ def test_cli_logs_query_byte_usage(tmp_path: Path, capsys: pytest.CaptureFixture
         bytes_billed=10_485_760,
     )
 
-    _print_profile_progress(ProfileProgress(
+    make_profile_renderer(tmp_path, verbose=True).event(ProfileProgress(
         event="execute_completed",
         current=1,
         total=1,
         item=item,
         result=result,
-    ), tmp_path)
+    ))
 
     output = capsys.readouterr().out
     assert "12.1 KiB processed" in output
@@ -360,7 +362,7 @@ def test_cli_repeats_failed_query_details_after_abort(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from data_profile.cli import _print_profile_progress
+    from data_profile.progress import make_profile_renderer
 
     model = ModelProfile(
         unique_id="model.demo.broken_view",
@@ -381,7 +383,7 @@ def test_cli_repeats_failed_query_details_after_abort(
     error = "Invalid query: Unrecognized name: missing_column at [4:12]"
     result = ProfileItemResult(item=item, status="failed", error=error)
 
-    _print_profile_progress(ProfileProgress(
+    make_profile_renderer(tmp_path).event(ProfileProgress(
         event="storage_discarded",
         current=0,
         total=1,
@@ -390,10 +392,10 @@ def test_cli_repeats_failed_query_details_after_abort(
         item=item,
         result=result,
         error=error,
-    ), tmp_path)
+    ))
 
     output = capsys.readouterr().out
-    assert "[ABORTED] Storage unchanged" in output
+    assert "Error: Storage unchanged" in output
     assert "Failed query: model.demo.broken_view / event_date" in output
     assert "Error details: Invalid query: Unrecognized name: missing_column at [4:12]" in output
 

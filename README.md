@@ -113,6 +113,8 @@ madako serve
 
 `madako profile`は、`manifest.json`と`catalog.json`をstorageへ取り込んでからBigQueryをprofileします。dbtコマンド自体はMadakoから実行しません。
 
+通常時はImport / Plan / Profile / Saveの進捗とsummaryだけを表示します。terminalでは進捗行を更新し、redirectやCIではANSI cursor controlを使わない追記形式になります。dry run、query開始・完了、queryごとの処理量などを確認する場合は`madako profile --verbose`（または`-v`）を使用してください。
+
 `max_bytes_billed`は従来どおりbyte数の整数でも指定できます。読みやすい文字列では、`KB` / `MB` / `GB` / `TB`（10進）と`KiB` / `MiB` / `GiB` / `TiB`（2進）を使用できます。
 
 BigQueryの処理には、インストール・認証済みの`bq` CLIが必要です。
@@ -138,7 +140,7 @@ madako profile --help
 
 - `max_bytes_billed`を指定したrelationだけ、実行前に対象クエリをdry runします。
 - dry runしたクエリのいずれかが`max_bytes_billed`を超える場合は、実データへのクエリを開始しません。
-- 各クエリの完了後に、BigQueryが報告した処理量を読みやすい単位でログへ表示します。
+- BigQueryが報告した合計処理量をsummaryへ表示します。`--verbose`ではクエリごとの処理量も表示します。
 - STRING dimensionはOverallを先に実行し、追加クエリなしでDistinct数を確認してから実行します。
 - 異なるrelationのクエリは`bigquery.threads`を上限に並列実行します。同じrelation内のクエリは順番に実行します。
 - `max_dimension_values`を超えるSTRING dimensionは理由を表示してスキップし、他のprofileは継続します。

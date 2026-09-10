@@ -4,6 +4,7 @@ from pathlib import Path
 from data_profile.api import DataProfile, ProfilePlan
 from data_profile.config import MadakoConfig, load_config
 from data_profile.planning import ProfileProgress
+from data_profile.progress import format_bytes, make_profile_renderer
 from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
 from data_profile.sample import sample_models
 
@@ -20,16 +21,7 @@ def _storage(
 
 
 def _format_bytes(value: int) -> str:
-    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
-    size = float(value)
-    unit = units[0]
-    for unit in units:
-        if size < 1024 or unit == units[-1]:
-            break
-        size /= 1024
-    if unit == "B":
-        return f"{value:,} B"
-    return f"{size:,.1f} {unit}"
+    return format_bytes(value)
 
 
 def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
@@ -49,76 +41,6 @@ def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
         if show_sql:
             print("  SQL:")
             print(item.sql)
-
-
-def _profile_label(progress: ProfileProgress) -> str:
-    model = progress.model or (progress.item.model if progress.item else None)
-    relation = model.unique_id if model else "profile"
-    return f"{relation} / {progress.dimension or 'Overall'}"
-
-
-def _print_profile_progress(progress: ProfileProgress, storage_dir: Path) -> None:
-    position = f"{progress.current}/{progress.total}"
-    label = _profile_label(progress)
-    if progress.event == "estimate_started":
-        print(f"[PLAN {position}] Checking query cost: {label}", flush=True)
-    elif progress.event == "estimate_completed":
-        item = progress.item
-        assert item is not None
-        assert item.estimated_bytes is not None
-        assert item.max_bytes_billed is not None
-        status = "READY" if item.executable else "BLOCKED"
-        print(
-            f"[{status} {position}] {label} · "
-            f"{_format_bytes(item.estimated_bytes)} estimated / "
-            f"{_format_bytes(item.max_bytes_billed)} maximum",
-            flush=True,
-        )
-        if item.skipped_columns:
-            print(f"  Unsupported columns omitted: {', '.join(item.skipped_columns)}", flush=True)
-    elif progress.event == "estimate_failed":
-        print(f"[FAILED {position}] Could not plan {label} · {progress.error}", flush=True)
-    elif progress.event == "execute_started":
-        print(f"[RUN {position}] Querying: {label}", flush=True)
-    elif progress.event == "execute_completed":
-        result = progress.result
-        assert result is not None
-        if result.status == "succeeded":
-            usage = ""
-            if result.bytes_processed is not None:
-                usage = f" · {_format_bytes(result.bytes_processed)} processed"
-            print(
-                f"[DONE {position}] {label} · {result.row_count:,} metric rows{usage}",
-                flush=True,
-            )
-        else:
-            print(f"[FAILED {position}] {label} · {result.error}", flush=True)
-    elif progress.event == "execute_skipped":
-        result = progress.result
-        assert result is not None
-        if result.skip_reason == "max_dimension_values":
-            print(
-                f"[SKIPPED {position}] {label} · {result.distinct_values:,} distinct values "
-                f"exceeds the {result.maximum_allowed:,} limit",
-                flush=True,
-            )
-        else:
-            print(f"[SKIPPED {position}] {label} · {result.error}", flush=True)
-    elif progress.event == "storage_started":
-        print("[SAVE] All queries finished; updating profile storage", flush=True)
-    elif progress.event == "storage_completed":
-        print(f"[SAVED] Updated storage: {storage_dir}", flush=True)
-    elif progress.event == "storage_discarded":
-        print(
-            f"[ABORTED] Storage unchanged; discarded results from "
-            f"{progress.current:,} completed queries",
-            flush=True,
-        )
-        if progress.error:
-            print(f"  Failed query: {label}", flush=True)
-            print(f"  Error details: {progress.error}", flush=True)
-    elif progress.event == "storage_failed":
-        print(f"[FAILED] Could not update storage · {progress.error}", flush=True)
 
 
 def main() -> None:
@@ -158,6 +80,7 @@ def main() -> None:
     profile.add_argument("--project")
     profile.add_argument("--location")
     profile.add_argument("--threads", type=int)
+    profile.add_argument("-v", "--verbose", action="store_true", help="Show query-level execution details")
     args = parser.parse_args()
 
     try:
@@ -215,22 +138,35 @@ def main() -> None:
         _print_plan(plan_result, show_sql=args.show_sql)
     elif args.command == "profile":
         storage_dir = args.storage_dir or config.storage_dir
-        print(f"[IMPORT] Reading dbt artifacts from {config.dbt_project_dir}", flush=True)
-        data_profile = DataProfile.from_dbt_project(
-            config.dbt_project_dir,
-            storage_dir,
-            storage=_storage(config, storage_dir),
-        )
-        print("[IMPORTED] dbt artifacts are ready", flush=True)
-        def report_progress(event: ProfileProgress) -> None:
-            _print_profile_progress(event, data_profile.storage_dir)
+        renderer = make_profile_renderer(storage_dir, verbose=args.verbose)
+        renderer.phase_started("Importing dbt artifacts")
+        try:
+            data_profile = DataProfile.from_dbt_project(
+                config.dbt_project_dir,
+                storage_dir,
+                storage=_storage(config, storage_dir),
+            )
+        except Exception as error:
+            renderer.phase_failed("Could not import dbt artifacts", error)
+            raise
+        renderer.phase_completed("Imported dbt artifacts")
 
-        plan_result = data_profile.plan(
-            select=args.select,
-            project=args.project or config.bigquery_project,
-            location=args.location or config.location,
-            progress=report_progress,
-        )
+        def report_progress(event: ProfileProgress) -> None:
+            renderer.event(event)
+
+        renderer.phase_started("Planning queries")
+        try:
+            plan_result = data_profile.plan(
+                select=args.select,
+                project=args.project or config.bigquery_project,
+                location=args.location or config.location,
+                progress=report_progress,
+            )
+        except Exception as error:
+            renderer.phase_failed("Could not plan queries", error)
+            raise
+        renderer.plan_completed(plan_result)
+        renderer.profiling_started(len(plan_result.items))
         result = data_profile.run(
             plan_result,
             progress=report_progress,
@@ -238,9 +174,4 @@ def main() -> None:
         )
         if not result.successful:
             raise SystemExit(1)
-        executed = sum(item.status == "succeeded" for item in result.items)
-        print(
-            f"[COMPLETE] Profiled {len(result.profiled_models):,} models "
-            f"with {executed:,} queries",
-            flush=True,
-        )
+        renderer.complete(result)
