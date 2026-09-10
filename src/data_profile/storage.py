@@ -274,7 +274,7 @@ def import_dbt_profiles(project_dir: Path, storage: ProfileStorage) -> tuple[Pat
             })
             if (previous := existing.get(model.unique_id)) and previous.profiles
             and previous.profile_version == PROFILE_COMPUTATION_VERSION
-            and previous.profiling_signature() == model.profiling_signature()
+            and previous.profile_result_signature() == model.profile_result_signature()
             else model
             for model in models
         ]

@@ -9,7 +9,7 @@
 Madakoには3層のバージョニングがあります:
 
 1. **Parquet Schema Version**: ファイル形式のバージョン（カラム構造、型）
-2. **Profiling Signature**: 計算ロジックに影響する設定の変更検知
+2. **Profile Result Signature**: 計算結果に影響する設定の変更検知
 3. **Profile Computation Version**: 対応型やmetric計算実装の変更検知
 
 `[storage]`の`mode`と`keep_generations`は保存directoryの公開・保持方法だけを制御し、Parquet schema versionやprofiling signatureには影響しない。設定を省略した既存configはdirect modeとして引き続き利用できる。
@@ -53,7 +53,7 @@ ProfilingConfigのフィールドは影響範囲によって分類されます:
 
 #### 計算ロジックに影響するフィールド
 
-これらのフィールド変更は `profiling_signature()` を変更し、既存profileを無効化します:
+これらのフィールド変更は `profile_result_signature()` を変更し、既存profileを無効化します:
 
 - `treat_empty_string_as_null`: missing_count/missing_rate の計算に影響
 - `dimensions`: どの次元で分割するか
@@ -94,18 +94,20 @@ class ProfilingConfig(BaseModel):
 ```
 
 **挙動**:
-1. `profiling_signature()` が変わる
+1. `profile_result_signature()` が変わる
 2. `import_dbt_profiles()` で既存profileと比較
 3. signatureが不一致 → profileと profiled_at をクリア
 4. ユーザーは再度 `profile()` を実行
 
-## 3. Profiling Signature
+## 3. Plan SignatureとProfile Result Signature
 
 ### 目的
 
-`ModelProfile.profiling_signature()` は、変更時に再プロファイリングが必要な入力フィールドのハッシュを提供します。
+`ModelProfile.profiling_signature()` は、作成済みplanを無効化する入力フィールドのsignatureを提供します。`enabled`や`max_bytes_billed`を含むため、実行条件が変わった古いplanは拒否されます。
 
-signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計算SQLなど、artifactやProfilingConfigに現れない計算変更でも古いplanを識別できるようにする。
+`ModelProfile.profile_result_signature()` は、保存済みprofileの計算結果と互換性があるかを判定します。`enabled`と`max_bytes_billed`は実行制御だけに使われるため除外され、これらを変更してdbt artifactを再importしても既存profileを保持します。
+
+両signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計算SQLなど、artifactやProfilingConfigに現れない計算変更でも古いplanやprofileを識別できるようにする。
 
 ### 含まれるフィールド
 
@@ -119,9 +121,11 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
     "relation_name",    # テーブル/ビュー名
     "materialization",  # table / view / incremental等
     "columns",          # カラム定義（name, type, description）
-    "profiling",        # ProfilingConfig全体
+    "profiling",        # Plan signatureではProfilingConfig全体
 }
 ```
+
+Profile Result Signatureでは、`profiling`から`enabled`と`max_bytes_billed`を除外します。
 
 ### 除外されるフィールド
 
@@ -134,8 +138,8 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
 ### 使用箇所
 
 1. **Plan作成時**: `ProfilePlanItem.model_signature` に保存
-2. **Plan実行時**: 現在のmodelのsignatureと比較し、staleなplanを拒否
-3. **dbt import時**: `import_dbt_profiles()` で既存profileと比較
+2. **Plan実行時**: 現在のmodelのPlan Signatureと比較し、staleなplanを拒否
+3. **dbt import時**: `import_dbt_profiles()` でProfile Result Signatureを既存profileと比較
 
 ### 変更シナリオ例
 
@@ -144,6 +148,7 @@ signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計
 | カラムを追加 | 変わる | クリア |
 | `treat_empty_string_as_null` 変更 | 変わる | クリア |
 | `max_bytes_billed` 変更 | 変わらない | 保持 |
+| `enabled` 変更 | 変わらない | 保持 |
 | description のみ変更 | 変わらない | 保持 |
 | tag 追加 | 変わらない | 保持 |
 

@@ -107,14 +107,14 @@ class ModelProfile(BaseModel):
         return self
 
     def profiling_signature(self) -> str:
-        """Compute signature of inputs that invalidate plans or metrics.
+        """Compute signature of inputs that invalidate an execution plan.
 
-        Returns JSON string of fields that trigger re-profiling when changed:
+        Returns JSON string of fields that require a plan to be rebuilt when changed:
         unique_id, resource_type, name, database, schema_name, relation_name,
         materialization, columns, and profiling config.
 
-        Used during import to detect incompatible changes. When signature
-        changes, existing profiles are cleared and must be recalculated.
+        Execution controls such as ``enabled`` and ``max_bytes_billed`` are
+        included so a plan cannot run after its constraints have changed.
 
         See config-versioning.md for details on what triggers invalidation.
         """
@@ -122,4 +122,21 @@ class ModelProfile(BaseModel):
             "unique_id", "resource_type", "name", "database", "schema_name",
             "relation_name", "materialization", "columns", "profiling",
         })
+        return f'{PROFILE_COMPUTATION_VERSION}:{payload}'
+
+    def profile_result_signature(self) -> str:
+        """Compute signature of inputs that affect persisted profile results.
+
+        Execution-only controls are excluded so toggling profiling or changing
+        its cost limit does not discard compatible results during dbt import.
+        """
+        payload = self.model_dump_json(
+            include={
+                "unique_id", "resource_type", "name", "database", "schema_name",
+                "relation_name", "materialization", "columns", "profiling",
+            },
+            exclude={
+                "profiling": {"enabled", "max_bytes_billed"},
+            },
+        )
         return f'{PROFILE_COMPUTATION_VERSION}:{payload}'
