@@ -1,5 +1,6 @@
 from io import StringIO
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 
 from data_profile.api import ProfilePlan
@@ -9,8 +10,21 @@ from data_profile.progress import make_profile_renderer
 
 
 class TtyBuffer(StringIO):
+    def __init__(self) -> None:
+        super().__init__()
+        self.animated = Event()
+        self._frames = 0
+
     def isatty(self) -> bool:
         return True
+
+    def write(self, value: str) -> int:
+        written = super().write(value)
+        if value.startswith("\r\x1b[2K") and len(value) > len("\r\x1b[2K"):
+            self._frames += 1
+            if self._frames >= 3:
+                self.animated.set()
+        return written
 
 
 def plan_item(unique_id: str, dimension: str | None = None) -> ProfilePlanItem:
@@ -97,11 +111,25 @@ def test_tty_renderer_rewrites_one_aggregate_progress_line() -> None:
     renderer.event(progress("execute_completed", 2, second))
     renderer.event(progress("execute_completed", 1, first))
 
+    renderer.close()
     rendered = output.getvalue()
     assert "\r\x1b[2K" in rendered
     assert "Profiling 1/2 · 1 running" in rendered
     assert "Profiling 2/2" in rendered
     assert "model.demo" not in rendered
+
+
+def test_tty_spinner_animates_while_no_progress_events_arrive() -> None:
+    output = TtyBuffer()
+    renderer = make_profile_renderer(Path(".madako"), stream=output)
+
+    renderer.phase_started("Profiling 0/2")
+    assert output.animated.wait(timeout=1)
+    renderer.close()
+
+    rendered = output.getvalue()
+    frames = {character for character in "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏" if character in rendered}
+    assert len(frames) >= 3
 
 
 def test_verbose_renderer_keeps_query_level_details_without_cursor_control() -> None:
@@ -124,6 +152,7 @@ def test_verbose_renderer_keeps_query_level_details_without_cursor_control() -> 
     ))
 
     rendered = output.getvalue()
+    renderer.close()
     assert "\x1b" not in rendered
     assert "[RUN 1/1] Querying: model.demo.events / event_date" in rendered
     assert "[DONE 1/1]" in rendered

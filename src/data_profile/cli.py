@@ -167,11 +167,16 @@ def main() -> None:
             raise
         renderer.plan_completed(plan_result)
         renderer.profiling_started(len(plan_result.items))
-        result = data_profile.run(
-            plan_result,
-            progress=report_progress,
-            threads=args.threads if args.threads is not None else config.threads,
-        )
+        try:
+            result = data_profile.run(
+                plan_result,
+                progress=report_progress,
+                threads=args.threads if args.threads is not None else config.threads,
+            )
+        except Exception as error:
+            renderer.phase_failed("Profiling failed", error)
+            raise
         if not result.successful:
+            renderer.close()
             raise SystemExit(1)
         renderer.complete(result)

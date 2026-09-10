@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from threading import Event, Lock, Thread, current_thread
 from typing import TextIO
 
 from data_profile.api import ProfilePlan, ProfileResult
@@ -35,6 +36,8 @@ def profile_label(progress: ProfileProgress) -> str:
 class ProfileRenderer:
     """Render execution state without coupling it to profile execution."""
 
+    SPINNER_INTERVAL = 0.08
+
     def __init__(
         self,
         storage_dir: Path,
@@ -50,23 +53,81 @@ class ProfileRenderer:
         self._total = 0
         self._states: dict[int, str] = {}
         self._spinner = 0
+        self._live_message: str | None = None
+        self._output_lock = Lock()
+        self._spinner_stop: Event | None = None
+        self._spinner_thread: Thread | None = None
 
     def _line(self, message: str = "") -> None:
-        if self._live:
-            self.stream.write("\r\x1b[2K")
-            self._live = False
-        self.stream.write(f"{message}\n")
-        self.stream.flush()
+        self._stop_spinner()
+        with self._output_lock:
+            if self._live:
+                self.stream.write("\r\x1b[2K")
+                self._live = False
+            self._live_message = None
+            self.stream.write(f"{message}\n")
+            self.stream.flush()
 
     def _update(self, message: str) -> None:
         if not self.tty:
             return
+        if self._spinner_thread is None:
+            self._start_spinner(message)
+            return
+        with self._output_lock:
+            self._live_message = message
+        self._render_spinner()
+
+    def _start_spinner(self, message: str) -> None:
+        self._stop_spinner()
+        with self._output_lock:
+            self._live_message = message
+        stop = Event()
+        self._spinner_stop = stop
+        self._render_spinner()
+        thread = Thread(
+            target=self._animate_spinner,
+            args=(stop,),
+            name="madako-progress",
+            daemon=True,
+        )
+        self._spinner_thread = thread
+        thread.start()
+
+    def _animate_spinner(self, stop: Event) -> None:
+        while not stop.wait(self.SPINNER_INTERVAL):
+            self._render_spinner()
+
+    def _render_spinner(self) -> None:
         frames = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-        marker = frames[self._spinner % len(frames)]
-        self._spinner += 1
-        self.stream.write(f"\r\x1b[2K{marker} {message}")
-        self.stream.flush()
-        self._live = True
+        with self._output_lock:
+            if self._live_message is None:
+                return
+            marker = frames[self._spinner % len(frames)]
+            self._spinner += 1
+            self.stream.write(f"\r\x1b[2K{marker} {self._live_message}")
+            self.stream.flush()
+            self._live = True
+
+    def _stop_spinner(self) -> None:
+        stop = self._spinner_stop
+        thread = self._spinner_thread
+        self._spinner_stop = None
+        self._spinner_thread = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not current_thread():
+            thread.join()
+
+    def close(self) -> None:
+        """Stop background animation and remove an unfinished progress line."""
+        self._stop_spinner()
+        with self._output_lock:
+            if self._live:
+                self.stream.write("\r\x1b[2K")
+                self.stream.flush()
+                self._live = False
+            self._live_message = None
 
     def phase_started(self, message: str) -> None:
         if self.tty:
