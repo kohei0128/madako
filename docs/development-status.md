@@ -52,7 +52,7 @@ dbt artifacts → DataProfile.plan() → optional BigQuery dry run
 - STRING dimensionはvalue間のheatmapとmetricsの範囲を表示する。数値が全てNULLなら`—`とする。
 - differenceは中立的な参考情報であり、正常・異常判定には使わない。
 - Explorerはmetadataだけを取得し、選択relationのprofileを別requestで取得する。識別子は`unique_id`。Refreshは保存済みデータを再取得する。
-- `madako profile`の通常表示はImport / Plan / Profile / Saveの進捗とsummaryへ集約する。TTYでは進捗行を更新し、非TTYではANSIに依存しない追記ログを使う。`--verbose`ではdry run、query開始・完了、queryごとの処理量を確認できる。途中失敗時は完了済みの一時結果を破棄し、storageを更新しなかったことを明示する。
+- `madako profile`の通常表示はImport / Plan / Profile / Saveの進捗とsummaryへ集約する。TTYではコマンド全体で1つの描画スレッドを管理し、イベント頻度に依存せずspinnerを回す。非TTYではANSIに依存しない約10%ごとの追記ログを使う。成功・失敗・スキップを分けて集計し、relation数はunique_idで数える。`--verbose`ではdry run、query開始・完了、queryごとの処理量と未実行理由を確認できる。途中失敗時はprofile結果を保存しなかったことを明示する（実行前のdbt metadata取込は別途保存される）。
 - Lineageは詳細画面の末尾に上流・選択relation・下流を横並びで表示し、dbtのdirect dependencyだけを辿る。表示中のrelationへ画面内で移動できる。
 - UI操作からBigQuery queryは発行しない。
 

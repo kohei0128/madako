@@ -115,6 +115,8 @@ madako serve
 
 通常時はImport / Plan / Profile / Saveの進捗とsummaryだけを表示します。terminalでは進捗行を更新し、redirectやCIではANSI cursor controlを使わない追記形式になります。dry run、query開始・完了、queryごとの処理量などを確認する場合は`madako profile --verbose`（または`-v`）を使用してください。
 
+terminalのspinnerは処理の完了を待つ間も一定速度で動きます。CIやredirectでは全体の約10%ごとに進捗を追記します。失敗・dimensionの上限超過は通常表示でも確認でき、失敗に伴う未実行queryの詳細は`--verbose`で表示します。summaryのquery数は成功したqueryの数で、スキップ数は別に表示します。`TERM=dumb`では行を書き換えず、色は使用しないため`NO_COLOR`でも表示内容は変わりません。
+
 `max_bytes_billed`は従来どおりbyte数の整数でも指定できます。読みやすい文字列では、`KB` / `MB` / `GB` / `TB`（10進）と`KiB` / `MiB` / `GiB` / `TiB`（2進）を使用できます。
 
 BigQueryの処理には、インストール・認証済みの`bq` CLIが必要です。
