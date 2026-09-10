@@ -13,6 +13,7 @@ def test_defaults_are_relative_to_working_directory(tmp_path: Path) -> None:
     assert config.storage_dir == tmp_path / ".data-profile"
     assert config.bigquery_project is None
     assert config.location == "asia-northeast1"
+    assert config.threads == 4
     assert config.host == "127.0.0.1"
     assert config.port == 8000
     assert config.use_generations is None
@@ -30,6 +31,7 @@ storage_dir = ".madako/storage"
 [bigquery]
 project = "billing-project"
 location = "US"
+threads = 8
 
 [server]
 host = "0.0.0.0"
@@ -52,6 +54,7 @@ keep_generations = 5
     assert config.storage_dir == tmp_path / ".madako" / "storage"
     assert config.bigquery_project == "billing-project"
     assert config.location == "US"
+    assert config.threads == 8
     assert config.host == "0.0.0.0"
     assert config.port == 8123
     assert config.use_generations is True
@@ -79,6 +82,7 @@ def test_direct_mode_is_explicitly_resolved(tmp_path: Path) -> None:
         "unknown = true",
         "[server]\nport = 70000",
         "[bigquery]\nlocation = ''",
+        "[bigquery]\nthreads = 0",
         "[storage]\nmode = 'remote'",
         "[storage]\nkeep_generations = 1",
     ],

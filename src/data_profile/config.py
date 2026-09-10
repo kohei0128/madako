@@ -23,6 +23,7 @@ class BigQueryConfig(BaseModel):
 
     project: str | None = Field(default=None, min_length=1)
     location: str = Field(default="asia-northeast1", min_length=1)
+    threads: int = Field(default=4, ge=1)
 
 
 class ServerConfig(BaseModel):
@@ -55,6 +56,7 @@ class MadakoConfig:
     storage_dir: Path
     bigquery_project: str | None
     location: str
+    threads: int
     host: str
     port: int
     use_generations: bool | None
@@ -107,6 +109,7 @@ def load_config(
         storage_dir=resolve(values.project.storage_dir),
         bigquery_project=values.bigquery.project,
         location=values.bigquery.location,
+        threads=values.bigquery.threads,
         host=values.server.host,
         port=values.server.port,
         use_generations=(

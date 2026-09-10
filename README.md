@@ -80,6 +80,7 @@ storage_dir = ".madako"
 [bigquery]
 project = "your-gcp-project"
 location = "asia-northeast1"
+threads = 4
 
 [server]
 host = "127.0.0.1"
@@ -91,6 +92,8 @@ keep_generations = 3
 ```
 
 相対パスは`madako.toml`の場所を基準にします。Madakoは現在のディレクトリから親へ向かって設定ファイルを探すため、project内のどこからでも実行できます。
+
+`bigquery.threads`は同時にprofileするrelation数です（既定4）。異なるrelationは並列に実行し、同じrelation内ではOverallの完了後にdimensionを順番に実行します。一時的に変更する場合は`madako profile --threads 8`のように指定できます。
 
 `storage.mode = "generations"`は、検証済みの新しい世代を作成してから`current` symlinkを切り替えます。既定では現在を含む3世代を保持し、`keep_generations`には2以上を指定できます。単一writerを前提とし、複数processからの同時保存は保証しません。`storage`設定を省略した場合は従来どおりdirect modeです。既存の`DATA_PROFILE_USE_GENERATIONS=1`も互換性のため利用できますが、新しい設定では`madako.toml`を推奨します。
 
@@ -137,6 +140,7 @@ madako profile --help
 - dry runしたクエリのいずれかが`max_bytes_billed`を超える場合は、実データへのクエリを開始しません。
 - 各クエリの完了後に、BigQueryが報告した処理量を読みやすい単位でログへ表示します。
 - STRING dimensionはOverallを先に実行し、追加クエリなしでDistinct数を確認してから実行します。
+- 異なるrelationのクエリは`bigquery.threads`を上限に並列実行します。同じrelation内のクエリは順番に実行します。
 - `max_dimension_values`を超えるSTRING dimensionは理由を表示してスキップし、他のprofileは継続します。
 - 途中でクエリや結果検証に失敗した場合、その実行結果はstorageへ保存しません。
 - UIの操作だけでBigQueryへのクエリが発行されることはありません。

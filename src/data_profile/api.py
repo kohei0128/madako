@@ -174,6 +174,7 @@ class DataProfile:
         plan: ProfilePlan,
         *,
         progress: ProgressCallback | None = None,
+        threads: int = 1,
     ) -> ProfileResult:
         if not plan.items:
             raise PlanningError("cannot run an empty profile plan")
@@ -184,6 +185,7 @@ class DataProfile:
             adapter=self._adapter,
             runner=self._runner,
             progress=progress,
+            threads=threads,
         )
         models_path, profiles_path = self._storage.paths
         if execution.complete:
@@ -242,8 +244,10 @@ class DataProfile:
         project: str | None = None,
         location: str = "asia-northeast1",
         progress: ProgressCallback | None = None,
+        threads: int = 1,
     ) -> ProfileResult:
         return self.run(
             self.plan(select=select, project=project, location=location, progress=progress),
             progress=progress,
+            threads=threads,
         )

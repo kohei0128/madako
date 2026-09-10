@@ -266,8 +266,8 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         calls.append(("plan", kwargs))
         return plan
 
-    def run_profiles(received_plan, *, progress):
-        calls.append(("run", received_plan))
+    def run_profiles(received_plan, *, progress, threads):
+        calls.append(("run", received_plan, threads))
         progress(ProfileProgress(
             event="execute_skipped",
             current=1,
@@ -296,7 +296,11 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         return app
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(sys, "argv", ["madako", "profile", "--select", "events"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["madako", "profile", "--select", "events", "--threads", "8"],
+    )
     monkeypatch.setattr(DataProfile, "from_dbt_project", import_dbt)
 
     cli_main()
@@ -306,7 +310,7 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         "plan",
         {"select": "events", "project": None, "location": "asia-northeast1"},
     )
-    assert calls[2] == ("run", plan)
+    assert calls[2] == ("run", plan, 8)
     output = capsys.readouterr().out
     assert "[IMPORT] Reading dbt artifacts" in output
     assert "[SKIPPED 1/1] model.demo.events / user_id" in output
