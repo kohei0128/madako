@@ -236,6 +236,7 @@ npm run test:e2e
 - [Roadmap](https://github.com/kohei0128/madako/blob/main/docs/roadmap.md)
 - [Storage Schema・復旧手順](https://github.com/kohei0128/madako/blob/main/docs/profile-storage-schema.md)
 - [Config Versioning](https://github.com/kohei0128/madako/blob/main/docs/config-versioning.md)
+- [PyPI release手順](https://github.com/kohei0128/madako/blob/main/docs/releasing.md)
 
 ## License
 
