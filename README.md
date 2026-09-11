@@ -52,7 +52,7 @@ models:
           treat_empty_string_as_null: true
 ```
 
-profiling設定を変更した後は、`dbt docs generate`と`madako profile`を再実行してください。
+profiling設定を変更した後は、`dbt docs generate`または`dbt parse`でartifactを更新してから、`madako profile`を再実行してください。使い分けは「3. profileして開く」を参照してください。
 
 `dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATE、DATETIME、TIMESTAMPまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
 
@@ -110,6 +110,15 @@ dbt docs generate
 madako profile
 madako serve
 ```
+
+YAMLの説明、テスト、`meta.profiling`だけを変更した開発中の確認では、より短時間で終わる`dbt parse`を代わりに使用できます。
+
+```bash
+dbt parse
+madako profile
+```
+
+`dbt parse`が更新するのは`manifest.json`だけで、warehouseから取得する`catalog.json`のカラム型や並び順は更新しません。既存の`catalog.json`が古い場合、Madakoは警告を表示したうえでその内容を使用します。`catalog.json`がない場合はYAMLの`data_type`を使用し、どちらにも型がないカラムは`UNKNOWN`としてprofile対象から除外します。モデルやsourceの実カラムを変更した後、初回取り込み時、正確なカラム型を確認したい場合は`dbt docs generate`を実行してください。
 
 `madako profile`は、`manifest.json`と`catalog.json`をstorageへ取り込んでからBigQueryをprofileします。dbtコマンド自体はMadakoから実行しません。
 
