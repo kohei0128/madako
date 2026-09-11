@@ -49,8 +49,10 @@ jobs:
           python -m venv "$RUNNER_TEMP/madako-smoke"
           "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel"
           "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import madako; assert importlib.util.find_spec('data_profile') is None; assert importlib.util.find_spec('fastapi') is None"
+          "$RUNNER_TEMP/madako-smoke/bin/pip" install "mypy>=1.15.0,<2"
           test ! -e "$RUNNER_TEMP/madako-smoke/bin/data-profile"
           cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/madako-smoke/bin/mypy" --strict "$GITHUB_WORKSPACE/tests/typing/public_api.py"
           "$RUNNER_TEMP/madako-smoke/bin/madako" build-sample --output-dir sample-profile
           "$RUNNER_TEMP/madako-smoke/bin/python" -c "from madako import DataProfile; assert DataProfile.from_storage('sample-profile').models()"
           "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel[web]"
