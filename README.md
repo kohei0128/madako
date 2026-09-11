@@ -52,7 +52,7 @@ models:
           treat_empty_string_as_null: true
 ```
 
-profiling設定を変更した後は、`dbt docs generate`と`madako profile`を再実行してください。
+profiling設定を変更した後は、`dbt docs generate`または`dbt parse`でartifactを更新してから、`madako profile`を再実行してください。使い分けは「3. profileして開く」を参照してください。
 
 `dimensions`を省略するとモデル全体だけを集計します。dimensionにはDATE、DATETIME、TIMESTAMPまたはSTRINGを指定できます。STRINGはOverallのDistinct数が`max_dimension_values`（既定10,000）を超える場合、そのdimensionだけをスキップします。Distinct ratioは表示しますが、実行可否には使いません。
 
@@ -111,6 +111,15 @@ madako profile
 madako serve
 ```
 
+YAMLの説明、テスト、`meta.profiling`だけを変更した開発中の確認では、より短時間で終わる`dbt parse`を代わりに使用できます。
+
+```bash
+dbt parse
+madako profile
+```
+
+`dbt parse`が更新するのは`manifest.json`だけで、warehouseから取得する`catalog.json`のカラム型や並び順は更新しません。既存の`catalog.json`が古い場合、Madakoは警告を表示したうえでその内容を使用します。`catalog.json`がない場合はYAMLの`data_type`を使用し、どちらにも型がないカラムは`UNKNOWN`としてprofile対象から除外します。モデルやsourceの実カラムを変更した後、初回取り込み時、正確なカラム型を確認したい場合は`dbt docs generate`を実行してください。
+
 `madako profile`は、`manifest.json`と`catalog.json`をstorageへ取り込んでからBigQueryをprofileします。dbtコマンド自体はMadakoから実行しません。
 
 通常時はImport / Plan / Profile / Saveの進捗とsummaryだけを表示します。terminalでは進捗行を更新し、redirectやCIではANSI cursor controlを使わない追記形式になります。dry run、query開始・完了、queryごとの処理量などを確認する場合は`madako profile --verbose`（または`-v`）を使用してください。
@@ -164,6 +173,8 @@ Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更�
 ## Python API
 
 CLIと同じ処理はPythonからも利用できます。
+
+配布packageにはPEP 561の`py.typed` markerを同梱しており、`madako`から公開するAPIのinline型注釈をmypyなどのtype checkerで利用できます。`madako`配下の内部moduleは型情報を含みますが、0.xの間は互換性保証の対象外です。
 
 ```python
 from madako import DataProfile

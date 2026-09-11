@@ -5,6 +5,13 @@ description = "Madako: a local-first catalog combining dbt metadata with data pr
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 dependencies = [
     "pydantic>=2.11.0,<3",
     "duckdb>=1.4.0,<2",
@@ -23,6 +30,7 @@ madako = "madako.cli:main"
 dev = [
     "fastapi>=0.116.0,<1",
     "httpx>=0.28.0,<1",
+    "mypy>=1.15.0,<2",
     "pytest>=8.4.0,<9",
     "uvicorn>=0.35.0,<1",
 ]
