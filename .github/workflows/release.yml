@@ -123,7 +123,7 @@ jobs:
 
           smoke_env="$RUNNER_TEMP/madako-testpypi-smoke"
           python -m venv "$smoke_env"
-          "$smoke_env/bin/pip" install "$published_wheel[web]"
+          "$smoke_env/bin/pip" install "$published_wheel"
           "$smoke_env/bin/python" -c "import importlib.metadata; import os; assert importlib.metadata.version('madako') == os.environ['PACKAGE_VERSION']"
           "$smoke_env/bin/madako" --help
           "$smoke_env/bin/madako" build-sample --output-dir "$RUNNER_TEMP/sample-profile"

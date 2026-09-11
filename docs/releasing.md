@@ -8,7 +8,7 @@ release workflowは次の順に実行する。
 2. Python test、Web build、E2E testを実行し、wheelとsdistを一度だけbuildする
 3. buildした配布物をworkflow artifactとして保存する
 4. 同じartifactをTestPyPIへ公開し、TestPyPIから取得したwheelがartifactとbyte単位で一致することを確認する
-5. 隔離環境でCLI、public Python API、`web` extraをsmoke testする
+5. 隔離環境でCLI、public Python API、Web appをsmoke testする
 6. GitHub Environment `pypi`の承認後、同じartifactをPyPIへ公開する
 
 ## 初回だけ必要な設定
