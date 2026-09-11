@@ -165,6 +165,8 @@ Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更�
 
 CLIと同じ処理はPythonからも利用できます。
 
+配布packageにはPEP 561の`py.typed` markerを同梱しており、`madako`から公開するAPIのinline型注釈をmypyなどのtype checkerで利用できます。`madako`配下の内部moduleは型情報を含みますが、0.xの間は互換性保証の対象外です。
+
 ```python
 from madako import DataProfile
 
