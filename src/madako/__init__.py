@@ -1,5 +1,6 @@
 """Public API for the dbt data profile catalog."""
 
+from madako._version import __version__
 from madako.api import DataProfile, ProfilePlan, ProfileResult
 from madako.dbt_artifacts import ArtifactError
 from madako.exceptions import (
@@ -17,6 +18,7 @@ from madako.warehouse import BigQueryAdapter, QueryExecution, WarehouseAdapter
 from madako.storage import ParquetProfileStorage, ProfileStorage, StorageRecoveryError
 
 __all__ = [
+    "__version__",
     "BigQueryAdapter",
     "ArtifactError",
     "DataProfile",

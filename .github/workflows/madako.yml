@@ -48,7 +48,7 @@ jobs:
           wheel="$(realpath dist/*.whl)"
           python -m venv "$RUNNER_TEMP/madako-smoke"
           "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel"
-          "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import madako; assert importlib.util.find_spec('data_profile') is None; assert importlib.util.find_spec('fastapi') is None"
+          "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import importlib.metadata; import madako; assert madako.__version__ == importlib.metadata.version('madako'); assert importlib.util.find_spec('data_profile') is None; assert importlib.util.find_spec('fastapi') is None"
           test ! -e "$RUNNER_TEMP/madako-smoke/bin/data-profile"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/madako-smoke/bin/madako" build-sample --output-dir sample-profile
