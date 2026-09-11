@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from madako._version import __version__
 from madako.models import ModelProfile
 from madako.repository import AmbiguousProfileError, ProfileNotFoundError
 from madako.storage import ParquetProfileStorage, ProfileStorage
@@ -15,7 +16,7 @@ WEB_DIST_DIR = Path(__file__).with_name("web_dist")
 
 
 def create_app(storage: ProfileStorage | None = None) -> FastAPI:
-    app = FastAPI(title="Madako API", version="0.1.0")
+    app = FastAPI(title="Madako API", version=__version__)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],

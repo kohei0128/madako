@@ -8,6 +8,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
+from madako import __version__
 from madako.api import DataProfile
 from madako.cli import main as cli_main
 from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
@@ -30,6 +31,10 @@ def request(app, path: str) -> httpx.Response:
             return await client.get(path)
 
     return asyncio.run(send())
+
+
+def test_openapi_version_matches_package_version() -> None:
+    assert create_app().openapi()["info"]["version"] == __version__
 
 
 def test_get_model_profile(storage: ParquetProfileStorage) -> None:

@@ -1,10 +1,15 @@
+from importlib.metadata import version
 from pathlib import Path
 
 import pytest
 
-from madako import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution
+from madako import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution, __version__
 from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from madako.storage import write_profile_storage
+
+
+def test_public_version_matches_distribution_metadata() -> None:
+    assert __version__ == version("madako")
 
 
 def configured_model() -> ModelProfile:

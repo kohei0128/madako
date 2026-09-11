@@ -12,4 +12,3 @@ def check_public_api(storage_dir: Path) -> None:
     assert_type(profile.profile(), ProfileResult)
     assert_type(result.successful, bool)
     assert_type(result.models_path, Path)
-
