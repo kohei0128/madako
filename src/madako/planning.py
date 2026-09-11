@@ -7,9 +7,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from data_profile.exceptions import DataProfileError, PlanningError, ResultValidationError, WarehouseError
-from data_profile.models import PROFILE_COMPUTATION_VERSION, ModelProfile
-from data_profile.warehouse import QueryExecution, WarehouseAdapter, complete_adapter
+from madako.exceptions import DataProfileError, PlanningError, ResultValidationError, WarehouseError
+from madako.models import PROFILE_COMPUTATION_VERSION, ModelProfile
+from madako.warehouse import QueryExecution, WarehouseAdapter, complete_adapter
 
 
 class ProfilePlanItem(BaseModel):

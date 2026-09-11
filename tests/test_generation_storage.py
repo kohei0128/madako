@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
-from data_profile.storage import ParquetProfileStorage, StorageFormatError
+from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.storage import ParquetProfileStorage, StorageFormatError
 
 
 @pytest.fixture

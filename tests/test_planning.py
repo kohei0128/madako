@@ -2,9 +2,9 @@ from threading import Barrier, Lock
 
 import pytest
 
-from data_profile.bigquery_profile import ProfilingError
-from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
-from data_profile.planning import create_profile_plan, execute_profile_plan
+from madako.bigquery_profile import ProfilingError
+from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.planning import create_profile_plan, execute_profile_plan
 
 
 def configured_model() -> ModelProfile:

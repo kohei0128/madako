@@ -2,12 +2,12 @@ import argparse
 import warnings
 from pathlib import Path
 
-from data_profile.api import DataProfile, ProfilePlan
-from data_profile.config import MadakoConfig, load_config
-from data_profile.exceptions import DataProfileError
-from data_profile.progress import ProfileRenderer, format_bytes
-from data_profile.storage import ParquetProfileStorage, build_parquet_fixture
-from data_profile.sample import sample_models
+from madako.api import DataProfile, ProfilePlan
+from madako.config import MadakoConfig, load_config
+from madako.exceptions import DataProfileError
+from madako.progress import ProfileRenderer, format_bytes
+from madako.storage import ParquetProfileStorage, build_parquet_fixture
+from madako.sample import sample_models
 
 
 def _storage(
@@ -92,7 +92,7 @@ def main() -> None:
         try:
             import uvicorn
 
-            from data_profile.server import create_app
+            from madako.server import create_app
         except ImportError as error:
             raise SystemExit(
                 "Web dependencies are not installed; install madako[web]"
@@ -123,11 +123,11 @@ def main() -> None:
         print(f"Wrote {profiles_path}")
     elif args.command == "plan":
         storage_dir = args.storage_dir or config.storage_dir
-        data_profile = DataProfile.from_storage(
+        catalog = DataProfile.from_storage(
             storage_dir,
             storage=_storage(config, storage_dir),
         )
-        plan_result = data_profile.plan(
+        plan_result = catalog.plan(
             select=args.select,
             project=args.project or config.bigquery_project,
             location=args.location or config.location,
@@ -142,7 +142,7 @@ def main() -> None:
                 # Stale-artifact warnings share the renderer's output lock.
                 with warnings.catch_warnings(record=True) as captured:
                     try:
-                        data_profile = DataProfile.from_dbt_project(
+                        catalog = DataProfile.from_dbt_project(
                             config.dbt_project_dir, storage_dir,
                             storage=_storage(config, storage_dir),
                         )
@@ -152,7 +152,7 @@ def main() -> None:
                 renderer.phase_completed("Imported dbt artifacts")
                 renderer.phase = "Plan"
                 renderer.phase_started("Planning queries")
-                plan_result = data_profile.plan(
+                plan_result = catalog.plan(
                     select=args.select,
                     project=args.project or config.bigquery_project,
                     location=args.location or config.location,
@@ -161,7 +161,7 @@ def main() -> None:
                 renderer.plan_completed(plan_result)
                 renderer.phase = "Profile"
                 renderer.profiling_started(len(plan_result.items))
-                result = data_profile.run(
+                result = catalog.run(
                     plan_result,
                     progress=renderer.event,
                     threads=args.threads if args.threads is not None else config.threads,

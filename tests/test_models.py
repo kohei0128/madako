@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from data_profile.models import ProfilingConfig
+from madako.models import ProfilingConfig
 
 
 @pytest.mark.parametrize(

@@ -15,7 +15,7 @@ class ProjectConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     dbt_project_dir: Path = Path(".")
-    storage_dir: Path = Path(".data-profile")
+    storage_dir: Path = Path(".madako")
 
 
 class BigQueryConfig(BaseModel):

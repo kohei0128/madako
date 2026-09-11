@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Protocol, cast
 
-from data_profile.models import ModelProfile, ProfileSlice
+from madako.models import ModelProfile, ProfileSlice
 
 
 @dataclass(frozen=True)
@@ -40,24 +40,24 @@ class BigQueryAdapter:
 
     @property
     def supported_types(self) -> frozenset[str]:
-        from data_profile import bigquery_profile
+        from madako import bigquery_profile
 
         return frozenset(bigquery_profile.SUPPORTED_TYPES)
 
     def build_profile_query(self, model: ModelProfile, dimension: str | None) -> str:
-        from data_profile import bigquery_profile
+        from madako import bigquery_profile
 
         return bigquery_profile.generate_profile_sql(model, dimension)
 
     def estimate(self, sql: str, project: str, location: str) -> int:
-        from data_profile import bigquery_profile
+        from madako import bigquery_profile
 
         return bigquery_profile.dry_run(sql, project, location)
 
     def execute(
         self, sql: str, project: str, location: str, max_bytes_billed: int | None,
     ) -> QueryExecution:
-        from data_profile import bigquery_profile
+        from madako import bigquery_profile
 
         return bigquery_profile.execute_profile(sql, project, location, max_bytes_billed)
 
@@ -67,7 +67,7 @@ class BigQueryAdapter:
         rows: list[dict],
         dimension: str | None,
     ) -> list[ProfileSlice]:
-        from data_profile import bigquery_profile
+        from madako import bigquery_profile
 
         return bigquery_profile.rows_to_profiles(model, rows, dimension=dimension, validate=True)
 

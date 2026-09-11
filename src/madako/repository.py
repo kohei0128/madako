@@ -4,8 +4,8 @@ from typing import Protocol
 
 import duckdb
 
-from data_profile.exceptions import StorageFormatError
-from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
+from madako.exceptions import StorageFormatError
+from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
 
 
 class ProfileNotFoundError(Exception):

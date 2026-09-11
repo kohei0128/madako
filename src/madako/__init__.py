@@ -1,8 +1,8 @@
 """Public API for the dbt data profile catalog."""
 
-from data_profile.api import DataProfile, ProfilePlan, ProfileResult
-from data_profile.dbt_artifacts import ArtifactError
-from data_profile.exceptions import (
+from madako.api import DataProfile, ProfilePlan, ProfileResult
+from madako.dbt_artifacts import ArtifactError
+from madako.exceptions import (
     DataProfileError,
     PlanningError,
     ProfilingError,
@@ -12,9 +12,9 @@ from data_profile.exceptions import (
     StorageOperationError,
     WarehouseError,
 )
-from data_profile.planning import ProfileItemResult, ProfileProgress
-from data_profile.warehouse import BigQueryAdapter, QueryExecution, WarehouseAdapter
-from data_profile.storage import ParquetProfileStorage, ProfileStorage, StorageRecoveryError
+from madako.planning import ProfileItemResult, ProfileProgress
+from madako.warehouse import BigQueryAdapter, QueryExecution, WarehouseAdapter
+from madako.storage import ParquetProfileStorage, ProfileStorage, StorageRecoveryError
 
 __all__ = [
     "BigQueryAdapter",

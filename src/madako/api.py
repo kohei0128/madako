@@ -2,10 +2,10 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-from data_profile.exceptions import DataProfileError, PlanningError, StorageOperationError
-from data_profile.warehouse import WarehouseAdapter, complete_adapter
-from data_profile.models import ModelProfile
-from data_profile.planning import (
+from madako.exceptions import DataProfileError, PlanningError, StorageOperationError
+from madako.warehouse import WarehouseAdapter, complete_adapter
+from madako.models import ModelProfile
+from madako.planning import (
     Estimator,
     ProfileItemResult,
     ProfilePlanItem,
@@ -15,7 +15,7 @@ from data_profile.planning import (
     create_profile_plan,
     execute_profile_plan,
 )
-from data_profile.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
+from madako.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
 
 
 class ProfilePlan(BaseModel):

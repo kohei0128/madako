@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from data_profile import DataProfile
+from madako import DataProfile
 
 
 def profile_rows() -> list[dict]:

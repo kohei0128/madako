@@ -1,9 +1,9 @@
 import pytest
 
-from data_profile import BigQueryAdapter, DataProfile, WarehouseError
-from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
-from data_profile.storage import write_profile_storage
-from data_profile.warehouse import complete_adapter
+from madako import BigQueryAdapter, DataProfile, WarehouseError
+from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
+from madako.storage import write_profile_storage
+from madako.warehouse import complete_adapter
 
 
 def test_bigquery_adapter_forwards_execution_settings(monkeypatch):
@@ -17,8 +17,8 @@ def test_bigquery_adapter_forwards_execution_settings(monkeypatch):
         calls.append(args)
         return [{"record_count": "1"}]
 
-    monkeypatch.setattr("data_profile.bigquery_profile.dry_run", estimate)
-    monkeypatch.setattr("data_profile.bigquery_profile.execute_profile", execute)
+    monkeypatch.setattr("madako.bigquery_profile.dry_run", estimate)
+    monkeypatch.setattr("madako.bigquery_profile.execute_profile", execute)
     adapter = BigQueryAdapter()
     assert adapter.estimate("sql", "billing", "US") == 123
     assert adapter.execute("sql", "billing", "US", 456) == [{"record_count": "1"}]
@@ -67,7 +67,7 @@ def test_complete_adapter_owns_query_and_result_contract(tmp_path, monkeypatch):
             )]
 
     monkeypatch.setattr(
-        "data_profile.bigquery_profile.generate_profile_sql",
+        "madako.bigquery_profile.generate_profile_sql",
         lambda *_: (_ for _ in ()).throw(AssertionError("BigQuery compiler was used")),
     )
     app = DataProfile(tmp_path, adapter=CustomAdapter())

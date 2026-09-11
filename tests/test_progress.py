@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from data_profile.api import ProfilePlan
-from data_profile.models import ModelProfile, ProfilingConfig
-from data_profile.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
-from data_profile.progress import ProfileRenderer
+from madako.api import ProfilePlan
+from madako.models import ModelProfile, ProfilingConfig
+from madako.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
+from madako.progress import ProfileRenderer
 
 
 class TtyBuffer(StringIO):
@@ -165,7 +165,7 @@ def test_verbose_renderer_keeps_query_level_details_without_cursor_control() -> 
 
 def test_progress_events_do_not_accelerate_spinner(monkeypatch) -> None:
     monkeypatch.setenv("TERM", "xterm")
-    monkeypatch.setattr("data_profile.progress.monotonic", lambda: 0)
+    monkeypatch.setattr("madako.progress.monotonic", lambda: 0)
     output = TtyBuffer()
     renderer = ProfileRenderer(Path(".madako"), stream=output)
     item = plan_item("model.demo.events")
@@ -173,7 +173,7 @@ def test_progress_events_do_not_accelerate_spinner(monkeypatch) -> None:
     for index in range(1, 101):
         renderer.event(progress("execute_started", index, item))
     assert set(output.getvalue()) & set(renderer.FRAMES) == {"⠋"}
-    monkeypatch.setattr("data_profile.progress.monotonic", lambda: 0.16)
+    monkeypatch.setattr("madako.progress.monotonic", lambda: 0.16)
     renderer.event(progress("execute_completed", 1, item))
     assert output.getvalue().endswith("⠹ Profiling 1/100 complete · 99 running")
 

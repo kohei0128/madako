@@ -10,10 +10,10 @@ from uuid import uuid4
 
 import duckdb
 
-from data_profile.dbt_artifacts import read_dbt_artifacts
-from data_profile.exceptions import StorageFormatError, StorageOperationError
-from data_profile.models import PROFILE_COMPUTATION_VERSION, ColumnMetadata, ModelProfile
-from data_profile.repository import DuckDBProfileRepository, JsonProfileRepository
+from madako.dbt_artifacts import read_dbt_artifacts
+from madako.exceptions import StorageFormatError, StorageOperationError
+from madako.models import PROFILE_COMPUTATION_VERSION, ColumnMetadata, ModelProfile
+from madako.repository import DuckDBProfileRepository, JsonProfileRepository
 
 
 MODELS_FILENAME = "models.parquet"
@@ -127,7 +127,7 @@ class ParquetProfileStorage:
     the constructor argument is omitted.
 
     When enabled, directory structure becomes:
-        .data-profile/
+        .madako/
         ├── current -> generations/gen-0002  (symlink)
         └── generations/
             ├── gen-0001/

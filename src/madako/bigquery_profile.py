@@ -3,9 +3,9 @@ import subprocess
 from math import isclose
 from uuid import uuid4
 
-from data_profile.exceptions import ProfilingError, ResultValidationError, WarehouseError
-from data_profile.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
-from data_profile.warehouse import QueryExecution
+from madako.exceptions import ProfilingError, ResultValidationError, WarehouseError
+from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice
+from madako.warehouse import QueryExecution
 
 
 MAX_RESULT_ROWS = 100_000

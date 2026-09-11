@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from data_profile import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution
-from data_profile.models import ColumnMetadata, ModelProfile, ProfilingConfig
-from data_profile.storage import write_profile_storage
+from madako import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution
+from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.storage import write_profile_storage
 
 
 def configured_model() -> ModelProfile:
@@ -231,7 +231,7 @@ def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_row
 
 
 def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
-    from data_profile import StorageOperationError
+    from madako import StorageOperationError
 
     write_profile_storage([configured_model()], tmp_path)
     app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
@@ -239,7 +239,7 @@ def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
     def fail_save(*args):
         raise OSError("disk full")
 
-    monkeypatch.setattr("data_profile.storage.ParquetProfileStorage.save", fail_save)
+    monkeypatch.setattr("madako.storage.ParquetProfileStorage.save", fail_save)
     with pytest.raises(StorageOperationError, match="could not save profile storage") as error:
         app.profile()
     assert isinstance(error.value.__cause__, OSError)
@@ -283,7 +283,7 @@ def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: 
 
 @pytest.mark.parametrize("change", ["remove", "config", "schema", "mutate_plan"])
 def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
-    from data_profile import ProfilingError
+    from madako import ProfilingError
     model = configured_model()
     write_profile_storage([model], tmp_path)
     calls = []
@@ -342,13 +342,13 @@ def test_null_date_bucket_is_saved_separately_from_overall(tmp_path: Path) -> No
 
 @pytest.mark.parametrize("changed", [False, True])
 def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch, changed: bool) -> None:
-    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+    from madako.storage import ParquetProfileStorage, import_dbt_profiles
     model = configured_model()
     write_profile_storage([model], tmp_path)
     app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     model.profiling.treat_empty_string_as_null = changed
-    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [model])
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
     import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
     persisted = app.models()[0]
     assert bool(persisted.profiles) is not changed
@@ -365,14 +365,14 @@ def test_reimport_preserves_profiles_when_execution_controls_change(
     field: str,
     value: bool | int,
 ) -> None:
-    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+    from madako.storage import ParquetProfileStorage, import_dbt_profiles
 
     model = configured_model()
     write_profile_storage([model], tmp_path)
     app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     setattr(model.profiling, field, value)
-    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [model])
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
 
     import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
 
@@ -383,14 +383,14 @@ def test_reimport_preserves_profiles_when_execution_controls_change(
 
 
 def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Path, monkeypatch) -> None:
-    from data_profile.storage import ParquetProfileStorage, import_dbt_profiles
+    from madako.storage import ParquetProfileStorage, import_dbt_profiles
     current = configured_model()
     write_profile_storage([current], tmp_path)
     app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
     assert app.profile().successful
     profiled = app.models()[0].model_copy(update={"profile_version": 1})
     write_profile_storage([profiled], tmp_path)
-    monkeypatch.setattr("data_profile.storage.read_dbt_artifacts", lambda _: [current])
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [current])
 
     import_dbt_profiles(tmp_path, ParquetProfileStorage(tmp_path))
 
