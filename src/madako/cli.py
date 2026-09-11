@@ -89,14 +89,9 @@ def main() -> None:
         print(f"Using config {config.source}")
 
     if args.command == "serve":
-        try:
-            import uvicorn
+        import uvicorn
 
-            from madako.server import create_app
-        except ImportError as error:
-            raise SystemExit(
-                "Web dependencies are not installed; install madako[web]"
-            ) from error
+        from madako.server import create_app
         storage = _storage(config, args.storage_dir)
         uvicorn.run(
             create_app(storage),

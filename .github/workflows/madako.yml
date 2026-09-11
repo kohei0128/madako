@@ -45,19 +45,18 @@ jobs:
       - run: uv build
       - run: python scripts/verify_package_contents.py dist
       - run: uvx --from 'twine==6.2.0' twine check dist/*
-      - name: Install core wheel in an isolated environment
+      - name: Install wheel in an isolated environment
         run: |
           wheel="$(realpath dist/*.whl)"
           python -m venv "$RUNNER_TEMP/madako-smoke"
           "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel"
-          "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import importlib.metadata; import madako; assert madako.__version__ == importlib.metadata.version('madako'); assert importlib.util.find_spec('data_profile') is None; assert importlib.util.find_spec('fastapi') is None"
+          "$RUNNER_TEMP/madako-smoke/bin/python" -c "import importlib.util; import importlib.metadata; import madako; assert madako.__version__ == importlib.metadata.version('madako'); assert importlib.util.find_spec('data_profile') is None; assert importlib.util.find_spec('fastapi') is not None; assert importlib.util.find_spec('uvicorn') is not None"
           "$RUNNER_TEMP/madako-smoke/bin/pip" install "mypy>=1.15.0,<2"
           test ! -e "$RUNNER_TEMP/madako-smoke/bin/data-profile"
           cd "$RUNNER_TEMP"
           "$RUNNER_TEMP/madako-smoke/bin/mypy" --strict "$GITHUB_WORKSPACE/tests/typing/public_api.py"
           "$RUNNER_TEMP/madako-smoke/bin/madako" build-sample --output-dir sample-profile
           "$RUNNER_TEMP/madako-smoke/bin/python" -c "from madako import DataProfile; assert DataProfile.from_storage('sample-profile').models()"
-          "$RUNNER_TEMP/madako-smoke/bin/pip" install "$wheel[web]"
           "$RUNNER_TEMP/madako-smoke/bin/python" -c "from madako.server import WEB_DIST_DIR, create_app; assert WEB_DIST_DIR.joinpath('index.html').is_file(); create_app()"
       - name: Use the wheel from a separate minimal dbt project
         run: |

@@ -28,6 +28,8 @@ classifiers = [
 dependencies = [
     "pydantic>=2.11.0,<3",
     "duckdb>=1.4.0,<2",
+    "fastapi>=0.116.0,<1",
+    "uvicorn>=0.35.0,<1",
 ]
 
 [project.urls]
@@ -35,22 +37,14 @@ Documentation = "https://github.com/kohei0128/madako#readme"
 Issues = "https://github.com/kohei0128/madako/issues"
 Source = "https://github.com/kohei0128/madako"
 
-[project.optional-dependencies]
-web = [
-    "fastapi>=0.116.0,<1",
-    "uvicorn>=0.35.0,<1",
-]
-
 [project.scripts]
 madako = "madako.cli:main"
 
 [dependency-groups]
 dev = [
-    "fastapi>=0.116.0,<1",
     "httpx>=0.28.0,<1",
     "mypy>=1.15.0,<2",
     "pytest>=8.4.0,<9",
-    "uvicorn>=0.35.0,<1",
 ]
 
 [build-system]

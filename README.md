@@ -11,16 +11,16 @@ Madakoは、**dbtのドキュメントと実データの状態を一緒に見ら
 Python 3.11以上が必要です。CLIとWeb UIを独立した環境へインストールする場合は、[uv](https://docs.astral.sh/uv/)を使用できます。
 
 ```bash
-uv tool install 'madako[web]'
+uv tool install madako
 ```
 
 既存のPython環境へインストールする場合は、pipを使用します。
 
 ```bash
-python -m pip install 'madako[web]'
+python -m pip install madako
 ```
 
-Web UIが不要でPython APIまたはCLIだけを利用する場合は、`madako`をextraなしでインストールできます。BigQueryをprofileするには、Python packageとは別にGoogle Cloud SDKの`bq` CLIをインストールして認証する必要があります。
+このinstallだけでPython API、CLI、Web UIを利用できます。BigQueryをprofileするには、Python packageとは別にGoogle Cloud SDKの`bq` CLIをインストールして認証する必要があります。
 
 ## Madakoでできること
 
