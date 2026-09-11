@@ -6,6 +6,22 @@ Madakoは、**dbtのドキュメントと実データの状態を一緒に見ら
 
 現在はBigQueryに対応したexperimentalなバージョンです。
 
+## インストール
+
+Python 3.11以上が必要です。CLIとWeb UIを独立した環境へインストールする場合は、[uv](https://docs.astral.sh/uv/)を使用できます。
+
+```bash
+uv tool install 'madako[web]'
+```
+
+既存のPython環境へインストールする場合は、pipを使用します。
+
+```bash
+python -m pip install 'madako[web]'
+```
+
+Web UIが不要でPython APIまたはCLIだけを利用する場合は、`madako`をextraなしでインストールできます。BigQueryをprofileするには、Python packageとは別にGoogle Cloud SDKの`bq` CLIをインストールして認証する必要があります。
+
 ## Madakoでできること
 
 - dbtのモデル・ソース・カラム・説明・テストを一覧表示
@@ -24,10 +40,9 @@ dbt artifacts + BigQuery
 
 ## まず画面を試す
 
-Python 3.11以上と[uv](https://docs.astral.sh/uv/)が必要です。次の例は合成データを使うため、dbtやBigQueryへの接続は必要ありません。
+次の例は合成データを使うため、dbt、BigQuery、`bq` CLIは必要ありません。
 
 ```bash
-uv tool install 'madako[web] @ git+https://github.com/kohei0128/madako.git'
 madako build-sample --output-dir .madako
 madako serve --storage-dir .madako
 ```
@@ -189,7 +204,7 @@ result = catalog.run(plan)
 print(result.successful)
 ```
 
-Warehouseやstorageは独自実装へ差し替えられます。詳細な契約は[開発状況](docs/development-status.md)と[Storage Schema](docs/profile-storage-schema.md)を参照してください。
+Warehouseやstorageは独自実装へ差し替えられます。詳細な契約は[開発状況](https://github.com/kohei0128/madako/blob/main/docs/development-status.md)と[Storage Schema](https://github.com/kohei0128/madako/blob/main/docs/profile-storage-schema.md)を参照してください。
 
 ## 開発
 
@@ -216,12 +231,12 @@ npm run test:e2e
 
 ## ドキュメント
 
-- [プロダクト要件](docs/product-requirements.md)
-- [開発状況](docs/development-status.md)
-- [Roadmap](docs/roadmap.md)
-- [Storage Schema・復旧手順](docs/profile-storage-schema.md)
-- [Config Versioning](docs/config-versioning.md)
+- [プロダクト要件](https://github.com/kohei0128/madako/blob/main/docs/product-requirements.md)
+- [開発状況](https://github.com/kohei0128/madako/blob/main/docs/development-status.md)
+- [Roadmap](https://github.com/kohei0128/madako/blob/main/docs/roadmap.md)
+- [Storage Schema・復旧手順](https://github.com/kohei0128/madako/blob/main/docs/profile-storage-schema.md)
+- [Config Versioning](https://github.com/kohei0128/madako/blob/main/docs/config-versioning.md)
 
 ## License
 
-[MIT License](LICENSE)
+[MIT License](https://github.com/kohei0128/madako/blob/main/LICENSE)
