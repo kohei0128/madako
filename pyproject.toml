@@ -41,6 +41,25 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/madako"]
+exclude = [
+    "/src/madako/**/__pycache__",
+    "/src/madako/**/*.pyc",
+]
+
+# Keep the source archive limited to files needed to rebuild the wheel.
+# The prebuilt web_dist is included so rebuilding does not require Node.js.
+# Hatchling also adds PKG-INFO and the VCS ignore file automatically.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/madako",
+    "/LICENSE",
+    "/README.md",
+    "/pyproject.toml",
+]
+exclude = [
+    "/src/madako/**/__pycache__",
+    "/src/madako/**/*.pyc",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
