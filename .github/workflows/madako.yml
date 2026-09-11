@@ -44,6 +44,7 @@ jobs:
         working-directory: web
       - run: uv build
       - run: python scripts/verify_package_contents.py dist
+      - run: uvx --from 'twine==6.2.0' twine check dist/*
       - name: Install core wheel in an isolated environment
         run: |
           wheel="$(realpath dist/*.whl)"

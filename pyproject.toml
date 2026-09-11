@@ -5,17 +5,35 @@ description = "Madako: a local-first catalog combining dbt metadata with data pr
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+authors = [
+    { name = "kohei0128" },
+]
+keywords = ["bigquery", "data-catalog", "data-profiling", "dbt"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Typing :: Typed",
 ]
 dependencies = [
     "pydantic>=2.11.0,<3",
     "duckdb>=1.4.0,<2",
 ]
+
+[project.urls]
+Documentation = "https://github.com/kohei0128/madako#readme"
+Issues = "https://github.com/kohei0128/madako/issues"
+Source = "https://github.com/kohei0128/madako"
 
 [project.optional-dependencies]
 web = [
@@ -40,6 +58,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
+core-metadata-version = "2.4"
 packages = ["src/madako"]
 exclude = [
     "/src/madako/**/__pycache__",
@@ -50,6 +69,7 @@ exclude = [
 # The prebuilt web_dist is included so rebuilding does not require Node.js.
 # Hatchling also adds PKG-INFO and the VCS ignore file automatically.
 [tool.hatch.build.targets.sdist]
+core-metadata-version = "2.4"
 include = [
     "/src/madako",
     "/LICENSE",
