@@ -315,7 +315,7 @@ models:
 
 STRING dimensionの実行可否はabsoluteなDistinct数で判断する。Distinct ratioはカラムの性質を理解するために保存・表示するが、初期実装では自動拒否条件に使わない。判定にはOverall profileの結果を再利用し、専用のBigQuery queryは追加しない。
 
-現在の設定schemaと既定値は[README](../README.md#dbt-projectの取り込みと実行)を参照する。
+現在の設定schemaと既定値は[日本語スタートガイド](ja/getting-started.md#1-profiling対象を選ぶ)を参照する。
 
 ---
 
