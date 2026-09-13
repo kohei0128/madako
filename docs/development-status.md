@@ -1,8 +1,8 @@
 # Madako 開発状況
 
-最終更新: 2026-09-13
+最終更新: 2026-09-14
 
-Madako 0.1.0は、experimentalなPython API、CLI、ローカルWebアプリを提供する。
+Madako 0.1系は、experimentalなPython API、CLI、ローカルWebアプリを提供する。
 操作方法は[日本語スタートガイド](ja/getting-started.md)、保存形式と復旧方法は
 [Profile Storage Schema](profile-storage-schema.md)を参照する。この文書は現行実装と
 既知の制約だけを扱い、完了済みの計画や変更履歴はGitに残す。
