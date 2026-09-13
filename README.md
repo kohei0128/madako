@@ -19,11 +19,10 @@ Madako requires Python 3.11 or later. The bundled sample uses synthetic data, so
 
 ```bash
 uv tool install madako
-madako build-sample --output-dir .madako
-madako serve --storage-dir .madako
+madako demo
 ```
 
-Open <http://127.0.0.1:8000>. The local API documentation is available at <http://127.0.0.1:8000/docs>.
+Open <http://127.0.0.1:8000>. Madako uses temporary sample storage for the demo and removes it when the server stops. The local API documentation is available at <http://127.0.0.1:8000/docs>.
 
 To install into an existing Python environment instead:
 

@@ -31,11 +31,11 @@ profileするには、別途Google Cloud SDKの`bq` CLIをインストールし�
 次の例は同梱された合成データを使うため、dbt、BigQuery、`bq` CLIは必要ありません。
 
 ```bash
-madako build-sample --output-dir .madako
-madako serve --storage-dir .madako
+madako demo
 ```
 
-ブラウザで <http://127.0.0.1:8000> を開きます。ローカルAPI仕様は
+ブラウザで <http://127.0.0.1:8000> を開きます。demo用のsample storageは一時的に
+作成され、serverを停止すると削除されます。ローカルAPI仕様は
 <http://127.0.0.1:8000/docs> です。
 
 ## 自分のdbt projectで使う
@@ -168,6 +168,7 @@ dry run、query開始・完了、queryごとの処理量などを確認する場
 
 | コマンド | 用途 |
 | --- | --- |
+| `madako demo` | 一時的なsample dataを使ってローカルWeb UIを起動する |
 | `madako profile` | dbt artifactを取り込み、対象データをprofileして保存する |
 | `madako serve` | 保存済みのcatalogをローカルWeb UIで開く |
 | `madako import-dbt` | BigQueryへ接続せず、dbt metadataだけを更新する |

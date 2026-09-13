@@ -32,12 +32,12 @@ The bundled sample uses synthetic data and does not require dbt, BigQuery, or
 the `bq` CLI.
 
 ```bash
-madako build-sample --output-dir .madako
-madako serve --storage-dir .madako
+madako demo
 ```
 
-Open <http://127.0.0.1:8000>. The local API documentation is available at
-<http://127.0.0.1:8000/docs>.
+Open <http://127.0.0.1:8000>. Madako uses temporary sample storage for the demo
+and removes it when the server stops. The local API documentation is available
+at <http://127.0.0.1:8000/docs>.
 
 ## Use Madako with your dbt project
 
@@ -180,6 +180,7 @@ content.
 
 | Command | Purpose |
 | --- | --- |
+| `madako demo` | Start the local browser UI with temporary sample data |
 | `madako profile` | Import dbt artifacts, profile enabled relations, and save the results |
 | `madako serve` | Open a saved catalog in the local browser UI |
 | `madako import-dbt` | Refresh dbt metadata without connecting to BigQuery |

@@ -202,6 +202,72 @@ keep_generations = 2
     assert (tmp_path / ".madako" / "current").is_symlink()
 
 
+def test_cli_demo_serves_sample_data_from_temporary_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    configured_storage = tmp_path / "configured"
+    (tmp_path / "madako.toml").write_text(
+        """
+[project]
+storage_dir = "configured"
+
+[server]
+host = "0.0.0.0"
+port = 8123
+
+[storage]
+mode = "generations"
+""".strip(),
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def run_server(app, **kwargs) -> None:
+        list_models = next(route.endpoint for route in app.routes if route.path == "/api/models")
+        captured["models"] = list_models(include_profiles=False)
+        captured["kwargs"] = kwargs
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["madako", "demo"])
+    monkeypatch.setattr("uvicorn.run", run_server)
+
+    cli_main()
+
+    models = captured["models"]
+    assert models[0].name == "events"
+    assert captured["kwargs"] == {"host": "0.0.0.0", "port": 8123}
+    assert "Serving sample data at http://0.0.0.0:8123" in capsys.readouterr().out
+    assert not configured_storage.exists()
+
+
+def test_cli_demo_options_override_config(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "madako.toml").write_text(
+        "[server]\nhost = '0.0.0.0'\nport = 8123\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def run_server(app, **kwargs) -> None:
+        captured["kwargs"] = kwargs
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["madako", "demo", "--host", "127.0.0.1", "--port", "9000"],
+    )
+    monkeypatch.setattr("uvicorn.run", run_server)
+
+    cli_main()
+
+    assert captured["kwargs"] == {"host": "127.0.0.1", "port": 9000}
+
+
 def test_cli_options_override_config(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
