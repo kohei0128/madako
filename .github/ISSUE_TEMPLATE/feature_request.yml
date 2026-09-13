@@ -1,0 +1,27 @@
+name: Feature request
+description: Tell us what you want to accomplish and what would make it easier.
+body:
+  - type: markdown
+    attributes:
+      value: You do not need an implementation plan to suggest an improvement. English and Japanese are both welcome. 日本語での提案も歓迎します。
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: Describe your use case and the outcome you want.
+    validations:
+      required: true
+  - type: textarea
+    id: difficulty
+    attributes:
+      label: What is difficult with Madako today?
+      description: Explain what gets in your way and any workaround you currently use.
+    validations:
+      required: true
+  - type: textarea
+    id: improvement
+    attributes:
+      label: What would make this easier?
+      description: If you have an idea, describe the behavior you would like. A technical solution is not required.
+    validations:
+      required: false
