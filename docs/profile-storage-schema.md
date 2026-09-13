@@ -1,6 +1,6 @@
 # Profile Storage Schema
 
-最終更新: 2026-09-10
+最終更新: 2026-09-13
 
 現在のschema versionは**1**。両ファイルに`schema_version`列を持つ。
 
@@ -75,7 +75,7 @@ keep_generations = 3
 | record_count | BIGINT | No | 対象sliceの行数 |
 | column_order | INTEGER | No | dbt上のcolumn表示順 |
 | column_name | VARCHAR | No | column名 |
-| column_type | VARCHAR | No | 正規化したMVP data type |
+| column_type | VARCHAR | No | 正規化した対応data type |
 | column_description | VARCHAR | No | dbt column description |
 | null_count | BIGINT | No | NULL Count |
 | null_rate | DOUBLE | No | 0から1のNULL Rate |
