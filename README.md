@@ -12,6 +12,15 @@ your warehouse into one browser UI. Browse descriptions, tests, lineage, row
 counts, missing values, distinct values, ranges, and changes across dimensions
 without issuing warehouse queries from the UI.
 
+Use Madako to answer questions that dbt Docs alone cannot answer about the
+actual data behind your models:
+
+- How many rows does this model contain?
+- Which columns have many missing values?
+- How many distinct values does each column have?
+- What ranges do numeric and date values cover?
+- How do profile results change across dates or categories?
+
 ![Madako showing dbt metadata and column profiles for a sample events model](https://raw.githubusercontent.com/kohei0128/madako/main/docs/assets/madako-overview.png)
 
 Madako currently supports BigQuery and is experimental software in the 0.1
