@@ -86,8 +86,6 @@ API.
 - [English getting started guide](https://github.com/kohei0128/madako/blob/main/docs/en/getting-started.md)
 - [Japanese getting started guide](https://github.com/kohei0128/madako/blob/main/docs/ja/getting-started.md)
 - [Documentation index](https://github.com/kohei0128/madako/blob/main/docs/README.md)
-- [Development status](https://github.com/kohei0128/madako/blob/main/docs/development-status.md)
-- [Roadmap](https://github.com/kohei0128/madako/blob/main/docs/roadmap.md)
 
 ## Development
 

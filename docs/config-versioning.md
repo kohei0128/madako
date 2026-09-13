@@ -1,6 +1,6 @@
 # Config and Storage Versioning Guide
 
-最終更新: 2026-09-10
+最終更新: 2026-09-13
 
 このドキュメントは、ProfilingConfigとParquet storageのバージョニング方針を定義します。
 
@@ -164,32 +164,32 @@ profile保存時に`models.parquet.profile_version`へ記録する。dbt artifac
 
 ### 関連ファイル
 
-- `src/madako/models.py`: ProfilingConfig, ModelProfile定義
-- `src/madako/storage.py`: Parquet schema version管理
-- `src/madako/repository.py`: Schema version検証
-- `docs/phase3-contracts-design.md`: 設計方針の詳細
+- [`src/madako/models.py`](../src/madako/models.py): ProfilingConfig、ModelProfile定義
+- [`src/madako/storage.py`](../src/madako/storage.py): Parquet schema version管理
+- [`src/madako/repository.py`](../src/madako/repository.py): Schema version検証
 
 ### 関連テスト
 
-- `tests/test_storage.py::test_unknown_schema_version_is_rejected`
-- `tests/test_storage.py::test_legacy_storage_migrates_only_when_names_are_unambiguous`
-- `tests/test_storage.py::test_storage_without_profile_version_loads_as_version_one`
-- `tests/test_public_api.py::test_reimport_preserves_only_compatible_profiles`
-- `tests/test_public_api.py::test_reimport_invalidates_profiles_from_old_computation_version`
+- [`tests/test_storage.py`](../tests/test_storage.py): schema version、legacy形式、
+  `profile_version`の互換性
+- [`tests/test_public_api.py`](../tests/test_public_api.py): 再import時のprofile互換性
 
 ## 6. よくある質問
 
 ### Q: 新しいProfilingConfigフィールドを追加したい
 
 A: 以下を確認してください:
+
 1. デフォルト値を提供する（後方互換性）
 2. 計算ロジックに影響するか判断する
-3. 影響する場合、`profiling_signature()` のincludeに含まれることを確認
+3. `ModelProfile.profiling_signature()`と`profile_result_signature()`の対象に
+   正しく含まれることを確認
 4. テストを追加（新フィールドありの保存→読み取り、signature変化の確認）
 
 ### Q: Parquetのカラムを追加したい
 
 A: 以下を確認してください:
+
 1. オプショナルカラムとして追加（NULL許可）
 2. `_write_profile_storage_files()` で新カラムを書き込む
 3. `DuckDBProfileRepository._load()` で新カラムを読み取る（存在チェック）
@@ -198,30 +198,18 @@ A: 以下を確認してください:
 ### Q: 非互換な変更をしたい（型変更、カラム削除）
 
 A: 以下の手順を踏んでください:
+
 1. schema versionを 2 に上げる
 2. v1からv2へのマイグレーションロジックを実装
 3. v1の読み取りサポートを維持（移行期間）
 4. マイグレーションガイドを作成
 5. ユーザーに通知（breaking change）
 
-## 7. 今後の拡張
-
-### 候補機能とバージョニング影響
-
-| 機能 | ProfilingConfig変更 | Signature / computation version影響 | Parquet影響 |
-|-----|-------------------|--------------|------------|
-| trim_whitespace | 新フィールド追加 | Yes（計算ロジック） | No |
-| カテゴリカルpagination | 新フィールド追加 | No（表示制御） | No |
-| 高cardinality制限 | 新フィールド追加 | Yes（結果に影響） | No |
-| 対応型追加 | なし | computation versionを更新 | 通常No |
-| 新しいmetric追加 | なし | computation versionを更新 | Yes（新カラム） |
-
-### バージョニング方針（0.x系 vs 1.0以降）
+## 7. Package versionとの関係
 
 - **0.x系** (Current): Experimental API
   - 非互換変更を許容（マイナーバージョンでも）
-  - 変更時はCHANGELOGで通知
-  - 重大な変更時はマイグレーションガイド提供
+  - 保存形式に非互換変更がある場合はマイグレーションガイドを追加
 
 - **1.0以降** (Future): Semantic Versioning
   - MAJOR: 非互換変更（schema version変更など）
