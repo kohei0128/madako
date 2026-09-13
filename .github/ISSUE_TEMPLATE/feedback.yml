@@ -1,0 +1,20 @@
+name: Feedback / Question
+description: Share your experience, ask a question, or suggest a small improvement.
+body:
+  - type: markdown
+    attributes:
+      value: First impressions, confusing documentation, questions about your use case, and ideas that are not fully formed are all welcome. English and Japanese are both welcome. 日本語での感想・質問も歓迎します。
+  - type: textarea
+    id: feedback
+    attributes:
+      label: What would you like to share or ask?
+      description: Tell us what you tried, what was useful or confusing, or what you would like to know.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Optionally add a documentation link, screenshot, or environment details that help explain your feedback. Remove private information before sharing.
+    validations:
+      required: false

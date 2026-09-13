@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a problem with Madako and help us reproduce it.
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for reporting a problem! English and Japanese are both welcome. 日本語での報告も歓迎します。
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and the actual behavior you observed. Include any relevant error message.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the commands or UI actions that led to the problem. If you cannot reproduce it consistently, tell us what you tried.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: input
+    id: madako-version
+    attributes:
+      label: Madako version
+      description: Check with `uv tool list` for a tool installation or `python -m pip show madako` in the Python environment where Madako is installed. For a source checkout, include the commit if known.
+      placeholder: e.g. 0.1.1
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      description: The Python version running Madako, if known.
+      placeholder: e.g. Python 3.12.8, or unknown
+    validations:
+      required: true
+  - type: input
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Include the OS version and whether you are using WSL or a container.
+      placeholder: e.g. Ubuntu 24.04, macOS 15, or Windows 11 with WSL2
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Additional environment details
+      description: If relevant, include your dbt and dbt-bigquery versions, Google Cloud SDK version, profiling configuration, or browser and version. Mention whether this occurs with the bundled sample or your own dbt project.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Logs, screenshots, or other context
+      description: Add any details that help explain the problem. Remove credentials and private data from logs, configuration, and screenshots before sharing.
+    validations:
+      required: false
