@@ -5,41 +5,17 @@
 [![CI](https://github.com/kohei0128/madako/actions/workflows/madako.yml/badge.svg)](https://github.com/kohei0128/madako/actions/workflows/madako.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/kohei0128/madako/blob/main/LICENSE)
 
-**See what your dbt models mean—and what their data actually looks like.**
+**Understand the data behind your dbt models.**
 
-Madako is a local-first data catalog that brings dbt metadata and profiles from
-your warehouse into one browser UI. Browse descriptions, tests, lineage, row
-counts, missing values, distinct values, ranges, and changes across dimensions
-without issuing warehouse queries from the UI.
-
-Use Madako to answer questions that dbt Docs alone cannot answer about the
-actual data behind your models:
-
-- How many rows does this model contain?
-- Which columns have many missing values?
-- How many distinct values does each column have?
-- What ranges do numeric and date values cover?
-- How do profile results change across dates or categories?
+Madako profiles your dbt models in BigQuery and saves the results as local
+Parquet files. Explore row counts, missing values, and value ranges in the
+included web UI, alongside your dbt descriptions—and compare them across dates
+or categories.
 
 ![Madako showing dbt metadata and column profiles for a sample events model](https://raw.githubusercontent.com/kohei0128/madako/main/docs/assets/madako-overview.png)
 
 Madako currently supports BigQuery and is experimental software in the 0.1
 series.
-
-## Why Madako
-
-- **Meaning and data together:** keep dbt descriptions, tests, and direct
-  lineage next to profiles of the underlying data.
-- **Changes in context:** compare missing values and type-specific metrics by
-  DATE, DATETIME, TIMESTAMP, or low-cardinality STRING dimensions.
-- **Explicit query controls:** opt models into profiling and set per-relation
-  maximum bytes billed in dbt YAML.
-- **Local-first browsing:** save results as local Parquet files and browse them
-  without triggering new BigQuery queries.
-
-```text
-dbt artifacts + BigQuery -> Madako -> local Parquet storage -> Web UI
-```
 
 ## Try it in a minute
 
@@ -77,8 +53,8 @@ models:
           max_bytes_billed: "1 GB"
 ```
 
-Then generate dbt artifacts, profile the selected relations, and open the
-catalog:
+Then generate dbt artifacts, profile the selected relations, and explore the
+results:
 
 ```bash
 dbt docs generate
@@ -89,6 +65,19 @@ madako serve
 See the [English getting started guide](https://github.com/kohei0128/madako/blob/main/docs/en/getting-started.md)
 for configuration, query-safety behavior, supported profiles, and the Python
 API.
+
+## Why Madako
+
+- **Reusable profile results:** profiles are stored as local Parquet files,
+  ready to query with your own tools. Browsing saved results requires no
+  additional BigQuery queries.
+- **Data with context:** view profiles alongside dbt descriptions, tests, and
+  direct lineage to understand what each model and column represents.
+- **Explicit query controls:** opt models into profiling and set per-relation
+  maximum bytes billed in dbt YAML.
+
+See the [profile storage schema](https://github.com/kohei0128/madako/blob/main/docs/profile-storage-schema.md)
+for the layout and contents of the saved Parquet files.
 
 ## Documentation
 
