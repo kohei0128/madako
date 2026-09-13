@@ -40,28 +40,85 @@ productionへのpublishは`pypi` Environmentの承認があるまで開始され
 
 ## Releaseを作成する
 
-1. `pyproject.toml`の`project.version`を、まだPyPI/TestPyPIで使っていないversionへ更新する。必要なら`web/package.json`の製品versionも同時に更新する。
-2. version変更をPull Requestで`main`へmergeし、通常CIが成功したことを確認する。
-3. 最新の`main` commitへ`v<version>`形式のannotated tagを作成してpushする。
-4. そのtagからGitHub Releaseを作成し、公開する。Draftの保存だけではworkflowは動かない。
+1. PyPIとTestPyPIの両方で未使用のversionを決める。
+2. `pyproject.toml`の`project.version`を更新し、`uv lock`で`uv.lock`を同期する。
+3. `web/package.json`と`web/package-lock.json`も同じversionへ更新する。`web/`で
+   `npm version <version> --no-git-tag-version`を実行すると両方を同期できる。
+4. tagとの一致、test、Web build、配布物をローカルで検証する。
+5. version変更をPull Requestで`main`へmergeし、通常CIが成功したことを確認する。
+6. `main`を再度pullし、version一致を確認してから、最新commitへ`v<version>`形式の
+   annotated tagを作成してpushする。
+7. そのtagからGitHub Releaseを作成し、公開する。Draftの保存だけではworkflowは
+   動かない。
 
-例:
+version更新時の例（`0.1.1`は公開するversionへ置き換える）:
 
 ```bash
-git switch main
-git pull --ff-only
-git tag -a v0.1.0 -m "Release v0.1.0"
-git push origin v0.1.0
-gh release create v0.1.0 --verify-tag --generate-notes
+release_version="0.1.1"
+
+# pyproject.tomlのproject.versionを先に更新する
+uv lock
+(cd web && npm version "$release_version" --no-git-tag-version)
+python scripts/verify_release_version.py "v${release_version}"
+uv run pytest
+npm --prefix web run build
+release_dist_dir="$(mktemp -d)"
+uv build --out-dir "$release_dist_dir"
+python scripts/verify_package_contents.py "$release_dist_dir"
 ```
 
-`release.yml`はGitHub Releaseの`published` eventだけをtriggerにする。branch push、Pull Request、Draft Releaseからpublish jobは動作しない。tagが`pyproject.toml`のversionと一致しない場合は、公開前にworkflowが失敗する。
+version変更のPull Requestをmergeした後:
+
+```bash
+release_version="0.1.1"
+git switch main
+git pull --ff-only origin main
+python scripts/verify_release_version.py "v${release_version}"
+git tag -a "v${release_version}" -m "Release v${release_version}"
+git push origin "v${release_version}"
+gh release create "v${release_version}" --verify-tag --generate-notes
+```
+
+tagはversion変更のmerge前に作成しない。release workflowはtagのcommitをcheckoutする
+ため、tag作成後に`main`のversionを直しても、そのworkflowには反映されない。
+
+`release.yml`はGitHub Releaseの`published` eventだけをtriggerにする。branch push、
+Pull Request、Draft Releaseからpublish jobは動作しない。tagが`pyproject.toml`の
+versionと一致しない場合は、配布物のbuildやuploadより前にworkflowが失敗する。
 
 TestPyPI smoke testが終わると、`publish-pypi` jobが`pypi` Environmentの承認待ちになる。ログとTestPyPIのproject pageを確認し、問題がなければ承認する。
 
 ## 失敗時の再実行
 
 PyPIとTestPyPIでは、公開済みの同一versionや同一filenameを削除しても上書きできない。
+
+### Version検証で失敗した場合
+
+`Verify release tag and package version`で失敗した場合は、workflowがTestPyPIやPyPIへ
+何もuploadしていないことをjob一覧で確認する。既存workflowの再実行は同じtagの
+commitを再びcheckoutするため、mainだけを修正しても解決しない。
+
+まだどちらのindexにもuploadしていなければ、version変更をmainへmergeした後、失敗した
+GitHub Releaseと誤ったcommitを指すtagを削除し、同じversionで作り直せる。
+
+```bash
+release_version="0.1.1"
+gh release delete "v${release_version}" --yes
+git tag -d "v${release_version}"
+git push origin --delete "v${release_version}"
+
+git switch main
+git pull --ff-only origin main
+python scripts/verify_release_version.py "v${release_version}"
+git tag -a "v${release_version}" -m "Release v${release_version}"
+git push origin "v${release_version}"
+gh release create "v${release_version}" --verify-tag --generate-notes
+```
+
+削除前に、失敗箇所がversion検証であり、TestPyPI / PyPI publish jobがskipされたことを
+必ず確認する。どちらかへupload済みならtagを作り直さず、新しいversionを採番する。
+
+### Publish開始後に失敗した場合
 
 - TestPyPIへの公開後にsmoke testまたはproduction publishが失敗した場合は、Actions画面から **Re-run failed jobs** を選ぶ。成功済みのTestPyPI publishを含むworkflow全体を再実行しない
 - `publish-pypi`が承認待ちで停止した場合は、内容を確認してEnvironment deploymentを承認または拒否する
