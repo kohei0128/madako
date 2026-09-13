@@ -1,14 +1,14 @@
 [project]
 name = "madako"
 version = "0.1.1"
-description = "Madako: a local-first catalog combining dbt metadata with data profiles."
+description = "A local-first data profiler for dbt that saves BigQuery profile results as Parquet."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
     { name = "kohei0128" },
 ]
-keywords = ["bigquery", "data-catalog", "data-profiling", "dbt"]
+keywords = ["bigquery", "data-catalog", "data-profiling", "dbt", "local-first", "parquet"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
