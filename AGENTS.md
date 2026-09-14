@@ -7,3 +7,4 @@
 - チェック完了後は、ユーザーから明示的に止められた場合や認証・権限で実行できない場合を除き、変更をコミットしてfeatureブランチをpushし、GitHub Pull Requestを作成する。
 - Pull Requestの説明には、検証結果と環境に起因するテスト上の制約を記載する。
 - Web E2Eテストには`npm run test:e2e`を使用する。このコマンドはPlaywrightと必要な共有ライブラリをプロジェクト内に自動準備するため、通常は別途`playwright install --with-deps`を実行しない。
+- Markdownの段落は文の途中でハードラップせず、段落ごとに1行で記述する。
