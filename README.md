@@ -4,6 +4,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/madako)](https://pypi.org/project/madako/)
 [![CI](https://github.com/kohei0128/madako/actions/workflows/madako.yml/badge.svg)](https://github.com/kohei0128/madako/actions/workflows/madako.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/kohei0128/madako/blob/main/LICENSE)
+[![OpenSSF Baseline](https://www.bestpractices.dev/projects/14631/baseline)](https://www.bestpractices.dev/projects/14631)
 
 **Understand the data behind your dbt models.**
 
