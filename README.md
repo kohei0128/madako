@@ -70,6 +70,8 @@ See the [profile storage schema](https://github.com/kohei0128/madako/blob/main/d
 - [Japanese getting started guide](https://github.com/kohei0128/madako/blob/main/docs/ja/getting-started.md)
 - [Documentation index](https://github.com/kohei0128/madako/blob/main/docs/README.md)
 
+Found a bug or have an idea? [Open an issue](https://github.com/kohei0128/madako/issues/new/choose). For security vulnerabilities, please follow our [Security Policy](https://github.com/kohei0128/madako/security/policy).
+
 ## Development
 
 ```bash
