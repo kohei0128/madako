@@ -42,14 +42,12 @@ productionへのpublishは`pypi` Environmentの承認があるまで開始され
 
 ### 1. Release準備のPull Requestを作成する
 
-この段階ではversionを更新して検証し、Pull Requestを作成する。tagとGitHub Releaseは
-まだ作成しない。
+この段階ではversionを更新して検証し、Pull Requestを作成する。tagとGitHub Releaseはまだ作成しない。
 
 1. PyPIとTestPyPIの両方で未使用のversionを決める。
 2. 最新の`main`からversion更新専用branchを作成する。
 3. `pyproject.toml`の`project.version`を更新し、`uv lock`で`uv.lock`を同期する。
-4. `web/package.json`と`web/package-lock.json`も同じversionへ更新する。`web/`で
-   `npm version <version> --no-git-tag-version`を実行すると両方を同期できる。
+4. `web/package.json`と`web/package-lock.json`も同じversionへ更新する。`web/`で`npm version <version> --no-git-tag-version`を実行すると両方を同期できる。
 5. tagとの一致、test、Web build、E2E、配布物をローカルで検証する。
 6. 変更をcommit・pushし、`main`向けのPull Requestを作成する。
 
@@ -84,19 +82,16 @@ gh pr create \
   --body "Prepare the Madako ${release_version} release."
 ```
 
-Pull Requestの説明には各検証結果と、認証や費用などの理由で実行できなかったtestを
-記載する。通常CIが成功してから`main`へmergeする。
+Pull Requestの説明には各検証結果と、認証や費用などの理由で実行できなかったtestを記載する。通常CIが成功してから`main`へmergeする。
 
 ### 2. Pull Requestのmerge後にReleaseを公開する
 
-この段階で初めてtagを作成する。merge後の`main`をpullし、release対象commitに正しい
-versionが含まれることを再確認する。
+この段階で初めてtagを作成する。merge後の`main`をpullし、release対象commitに正しいversionが含まれることを再確認する。
 
 1. version更新のPull Requestと通常CIが完了していることを確認する。
 2. `main`をpullし、tagとpackage versionの一致を検証する。
 3. 最新の`main` commitへannotated tagを作成してpushする。
-4. そのtagからGitHub Releaseを作成し、公開する。Draftの保存だけではworkflowは
-   動かない。
+4. そのtagからGitHub Releaseを作成し、公開する。Draftの保存だけではworkflowは動かない。
 5. TestPyPI publishとsmoke testの完了後、`pypi` Environmentのdeploymentを承認する。
 
 実行例:
@@ -112,18 +107,13 @@ git push origin "v${release_version}"
 gh release create "v${release_version}" --verify-tag --generate-notes
 ```
 
-`git status --short`に出力がある場合は、未commitの変更をreleaseへ混ぜず、原因を確認して
-からtagを作成する。
+`git status --short`に出力がある場合は、未commitの変更をreleaseへ混ぜず、原因を確認してからtagを作成する。
 
-tagはversion変更のmerge前に作成しない。release workflowはtagのcommitをcheckoutする
-ため、tag作成後に`main`のversionを直しても、そのworkflowには反映されない。
+tagはversion変更のmerge前に作成しない。release workflowはtagのcommitをcheckoutするため、tag作成後に`main`のversionを直しても、そのworkflowには反映されない。
 
-`release.yml`はGitHub Releaseの`published` eventだけをtriggerにする。branch push、
-Pull Request、Draft Releaseからpublish jobは動作しない。tagが`pyproject.toml`の
-versionと一致しない場合は、配布物のbuildやuploadより前にworkflowが失敗する。
+`release.yml`はGitHub Releaseの`published` eventだけをtriggerにする。branch push、Pull Request、Draft Releaseからpublish jobは動作しない。tagが`pyproject.toml`のversionと一致しない場合は、配布物のbuildやuploadより前にworkflowが失敗する。
 
-TestPyPI smoke testが終わると、`publish-pypi` jobが`pypi` Environmentの承認待ちに
-なる。ログとTestPyPIのproject pageを確認し、問題がなければ承認する。
+TestPyPI smoke testが終わると、`publish-pypi` jobが`pypi` Environmentの承認待ちになる。ログとTestPyPIのproject pageを確認し、問題がなければ承認する。
 
 ## 失敗時の再実行
 
@@ -131,12 +121,9 @@ PyPIとTestPyPIでは、公開済みの同一versionや同一filenameを削除�
 
 ### Version検証で失敗した場合
 
-`Verify release tag and package version`で失敗した場合は、workflowがTestPyPIやPyPIへ
-何もuploadしていないことをjob一覧で確認する。既存workflowの再実行は同じtagの
-commitを再びcheckoutするため、mainだけを修正しても解決しない。
+`Verify release tag and package version`で失敗した場合は、workflowがTestPyPIやPyPIへ何もuploadしていないことをjob一覧で確認する。既存workflowの再実行は同じtagのcommitを再びcheckoutするため、mainだけを修正しても解決しない。
 
-まだどちらのindexにもuploadしていなければ、version変更をmainへmergeした後、失敗した
-GitHub Releaseと誤ったcommitを指すtagを削除し、同じversionで作り直せる。
+まだどちらのindexにもuploadしていなければ、version変更をmainへmergeした後、失敗したGitHub Releaseと誤ったcommitを指すtagを削除し、同じversionで作り直せる。
 
 ```bash
 release_version="0.1.1"
@@ -152,8 +139,7 @@ git push origin "v${release_version}"
 gh release create "v${release_version}" --verify-tag --generate-notes
 ```
 
-削除前に、失敗箇所がversion検証であり、TestPyPI / PyPI publish jobがskipされたことを
-必ず確認する。どちらかへupload済みならtagを作り直さず、新しいversionを採番する。
+削除前に、失敗箇所がversion検証であり、TestPyPI / PyPI publish jobがskipされたことを必ず確認する。どちらかへupload済みならtagを作り直さず、新しいversionを採番する。
 
 ### Publish開始後に失敗した場合
 

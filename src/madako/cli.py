@@ -1,4 +1,5 @@
 import argparse
+import tempfile
 import warnings
 from pathlib import Path
 
@@ -52,6 +53,9 @@ def main() -> None:
     serve.add_argument("--host")
     serve.add_argument("--port", type=int)
     serve.add_argument("--storage-dir", type=Path)
+    demo = subparsers.add_parser("demo", help="Start the local Madako app with sample data")
+    demo.add_argument("--host")
+    demo.add_argument("--port", type=int)
     build_sample = subparsers.add_parser("build-sample", help="Build sample Parquet files from synthetic data or JSON")
     build_sample.add_argument(
         "--source",
@@ -98,6 +102,17 @@ def main() -> None:
             host=args.host or config.host,
             port=args.port or config.port,
         )
+    elif args.command == "demo":
+        import uvicorn
+
+        from madako.server import create_app
+        host = args.host or config.host
+        port = args.port or config.port
+        with tempfile.TemporaryDirectory(prefix="madako-demo-") as directory:
+            storage = ParquetProfileStorage(Path(directory), use_generations=False)
+            storage.save(sample_models())
+            print(f"Serving sample data at http://{host}:{port}", flush=True)
+            uvicorn.run(create_app(storage), host=host, port=port)
     elif args.command == "build-sample":
         output_dir = args.output_dir or config.storage_dir
         storage = _storage(config, output_dir)
