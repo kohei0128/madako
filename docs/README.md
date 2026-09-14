@@ -1,22 +1,17 @@
 # Madako documentation
 
-The root [README](../README.md) is the concise English product introduction and
-the description rendered on PyPI. Use this page to find user guides, current
-technical references, and maintainer procedures.
+The root [README](../README.md) is the concise English product introduction and the description rendered on PyPI. Use this page to find user guides, current technical references, and maintainer procedures.
 
 ## User guides
 
 - [Getting started in English](en/getting-started.md)
 - [日本語のスタートガイド](ja/getting-started.md)
 
-The guides cover installation, the synthetic sample, dbt and BigQuery setup,
-configuration, query safety, current limitations, the Python API, and
-development checks.
+The guides cover installation, the synthetic sample, dbt and BigQuery setup, configuration, query safety, current limitations, the Python API, and development checks.
 
 ## Technical reference
 
-These documents describe the current implementation and compatibility
-contracts. They are currently maintained primarily in Japanese.
+These documents describe the current implementation and compatibility contracts. They are currently maintained primarily in Japanese.
 
 | Document | Purpose |
 | --- | --- |
@@ -28,7 +23,4 @@ contracts. They are currently maintained primarily in Japanese.
 
 - [PyPI release procedure](releasing.md)
 
-User-facing guidance belongs under `docs/en/` and `docs/ja/`. Technical
-references remain language-neutral by path and should describe the current
-code, not completed project plans or decision history; Git preserves that
-history.
+User-facing guidance belongs under `docs/en/` and `docs/ja/`. Technical references remain language-neutral by path and should describe the current code, not completed project plans or decision history; Git preserves that history.

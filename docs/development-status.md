@@ -2,10 +2,7 @@
 
 最終更新: 2026-09-14
 
-Madako 0.1系は、experimentalなPython API、CLI、ローカルWebアプリを提供する。
-操作方法は[日本語スタートガイド](ja/getting-started.md)、保存形式と復旧方法は
-[Profile Storage Schema](profile-storage-schema.md)を参照する。この文書は現行実装と
-既知の制約だけを扱い、完了済みの計画や変更履歴はGitに残す。
+Madako 0.1系は、experimentalなPython API、CLI、ローカルWebアプリを提供する。操作方法は[日本語スタートガイド](ja/getting-started.md)、保存形式と復旧方法は[Profile Storage Schema](profile-storage-schema.md)を参照する。この文書は現行実装と既知の制約だけを扱い、完了済みの計画や変更履歴はGitに残す。
 
 ## 現在の構成
 
@@ -26,23 +23,15 @@ React ← FastAPI ← DuckDB ← local Parquet storage ← save
 
 ## 重要な実行保証
 
-- `plan()`は`max_bytes_billed`を設定したrelationだけdry runする。1つでも上限を
-  超えるplanは、含まれる実queryをすべてskipする。
-- `run()`はrelation、schema、profiling設定、計算versionがplan作成時から変わって
-  いないことを実行前に確認する。
-- Overall、column集合・型・重複、件数・率、dimension bucketの行数合計を検証する。
-  `bq`の取得上限100,000 metric rowsに達した不完全な可能性がある結果は拒否する。
-- STRING dimensionはOverallの`distinct_count`を使い、`max_dimension_values`超過時は
-  そのdimensionだけskipする。判定専用queryは発行しない。
-- queryまたは結果変換に失敗すると、後続項目をskipし、そのrunのprofile結果を
-  保存しない。実行前に取り込んだdbt metadataは別途保存済みである。
-- 各queryは独立しており、複数relationやdimensionを同じWarehouse snapshotで
-  読む保証はない。
-- artifact再import時は、同じ`unique_id`で計算結果に影響する入力と
-  `PROFILE_COMPUTATION_VERSION`が一致するprofileだけを引き継ぐ。
+- `plan()`は`max_bytes_billed`を設定したrelationだけdry runする。1つでも上限を超えるplanは、含まれる実queryをすべてskipする。
+- `run()`はrelation、schema、profiling設定、計算versionがplan作成時から変わっていないことを実行前に確認する。
+- Overall、column集合・型・重複、件数・率、dimension bucketの行数合計を検証する。`bq`の取得上限100,000 metric rowsに達した不完全な可能性がある結果は拒否する。
+- STRING dimensionはOverallの`distinct_count`を使い、`max_dimension_values`超過時はそのdimensionだけskipする。判定専用queryは発行しない。
+- queryまたは結果変換に失敗すると、後続項目をskipし、そのrunのprofile結果を保存しない。実行前に取り込んだdbt metadataは別途保存済みである。
+- 各queryは独立しており、複数relationやdimensionを同じWarehouse snapshotで読む保証はない。
+- artifact再import時は、同じ`unique_id`で計算結果に影響する入力と`PROFILE_COMPUTATION_VERSION`が一致するprofileだけを引き継ぐ。
 
-保存時のatomicity、互換性、復旧手順は[Profile Storage Schema](profile-storage-schema.md)、
-profile無効化の規則は[Config and Storage Versioning](config-versioning.md)を正とする。
+保存時のatomicity、互換性、復旧手順は[Profile Storage Schema](profile-storage-schema.md)、profile無効化の規則は[Config and Storage Versioning](config-versioning.md)を正とする。
 
 ## 自動検証
 
@@ -54,10 +43,7 @@ GitHub Actionsでは次を実行する。
 - clean environmentでのCLI、Python API、同梱Web UIのsmoke test
 - repository外へコピーした最小dbt projectでのimport・plan・run・保存
 
-実BigQuery E2Eは費用と認証を伴うため自動化していない。2026-09-06に複数relation、
-NULL partition、空table、複数dimension、上限超過、途中失敗、取得上限、NUMERIC /
-BIGNUMERICの精度保持を手動確認した。再確認には
-[`examples/verify_phase2_bigquery.py`](../examples/verify_phase2_bigquery.py)を使用する。
+実BigQuery E2Eは費用と認証を伴うため自動化していない。2026-09-06に複数relation、NULL partition、空table、複数dimension、上限超過、途中失敗、取得上限、NUMERIC / BIGNUMERICの精度保持を手動確認した。再確認には[`examples/verify_phase2_bigquery.py`](../examples/verify_phase2_bigquery.py)を使用する。
 
 ## 次の検討事項
 

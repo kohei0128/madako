@@ -170,8 +170,7 @@ profile保存時に`models.parquet.profile_version`へ記録する。dbt artifac
 
 ### 関連テスト
 
-- [`tests/test_storage.py`](../tests/test_storage.py): schema version、legacy形式、
-  `profile_version`の互換性
+- [`tests/test_storage.py`](../tests/test_storage.py): schema version、legacy形式、`profile_version`の互換性
 - [`tests/test_public_api.py`](../tests/test_public_api.py): 再import時のprofile互換性
 
 ## 6. よくある質問
@@ -182,8 +181,7 @@ A: 以下を確認してください:
 
 1. デフォルト値を提供する（後方互換性）
 2. 計算ロジックに影響するか判断する
-3. `ModelProfile.profiling_signature()`と`profile_result_signature()`の対象に
-   正しく含まれることを確認
+3. `ModelProfile.profiling_signature()`と`profile_result_signature()`の対象に正しく含まれることを確認
 4. テストを追加（新フィールドありの保存→読み取り、signature変化の確認）
 
 ### Q: Parquetのカラムを追加したい
