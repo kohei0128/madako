@@ -166,6 +166,12 @@ OverallとDATE、DATETIME、TIMESTAMP、STRING dimensionを生成できます。
 
 Madakoは現在0.1系です。公開APIとstorage形式は、0.xの間に変更される可能性があります。
 
+## FAQ: Madakoとdbt-profilerの違いは何ですか？
+
+[dbt-profiler](https://github.com/data-mie/dbt-profiler)は、profiling用SQLやメモリ上のtableを生成し、Markdown table、schema YAML、docs blockを出力できるmacroを提供するdbt packageです。print系macroを使うだけならdbt modelは増えません。profile結果をdbt modelとして永続化する使い方では、そのmodelがdbt DAGのnodeに加わります。
+
+Madakoは異なるworkflowを扱います。設定したdbt modelやsourceを対象にBigQueryでprofileを実行し、結果をローカルParquetへ分けて保存し、dbt metadataとともにWeb UIへ表示します。profiling用dbt modelや永続的なBigQuery tableは追加せず、保存済み結果をWeb UIで開く際にBigQueryへ再queryすることもありません。
+
 ## Python API
 
 CLIと同じ処理はPythonからも利用できます。

@@ -166,6 +166,12 @@ Current limitations:
 
 Madako is in the 0.1 series. Public APIs and the storage format may change during the 0.x series.
 
+## FAQ: How is Madako different from dbt-profiler?
+
+[dbt-profiler](https://github.com/data-mie/dbt-profiler) is a dbt package whose macros can produce profiling SQL and an in-memory table, print a Markdown table, and generate schema YAML or docs blocks. Using its print macros alone does not add a dbt model. If you choose to persist a profile as a dbt model, that model adds a node to the dbt DAG.
+
+Madako covers a different workflow: it selects configured dbt models and sources, runs their BigQuery profiles, saves the results separately as local Parquet files, and displays those results with dbt metadata in a Web UI. This does not add profiling models to the dbt DAG or persistent profile tables to BigQuery, and opening a saved result in the Web UI does not query BigQuery again.
+
 ## Python API
 
 The same profiling flow is available from Python:
