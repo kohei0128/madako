@@ -41,6 +41,7 @@ export interface ModelProfile {
     max_dimension_values: number;
     max_bytes_billed: number;
     treat_empty_string_as_null: boolean;
+    where: string | null;
   };
   columns: { name: string; data_type: string; description: string }[];
   profiled_at: string | null;

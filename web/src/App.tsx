@@ -581,11 +581,14 @@ function App() {
           <p>{model.description}</p>
           <div className="eyebrow">{model.database} / {model.schema}</div>
           <div className="metadata">
-            <span><b>{(overallSlice?.record_count ?? slice.record_count).toLocaleString()}</b> total rows</span>
+            <span><b>{(overallSlice?.record_count ?? slice.record_count).toLocaleString()}</b> profiled rows</span>
             <span>Profiled {model.profiled_at ? new Date(model.profiled_at).toLocaleString() : "—"}</span>
             <span>{model.tests.length} dbt tests</span>
             {temporalDimension && latestDimensionSlice && <span className="latest-partition"><span>Latest partition</span><strong>{latestDimensionSlice.dimension_value}</strong><small>{latestDimensionSlice.record_count.toLocaleString()} rows</small></span>}
           </div>
+          {model.profiling.where && <div className="profile-scope" aria-label="Profile row filter">
+            <strong>Filtered</strong><code>{model.profiling.where}</code>
+          </div>}
         </header>
 
         <div className="profile-by">

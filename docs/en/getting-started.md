@@ -66,6 +66,24 @@ config:
 
 `max_bytes_billed` also accepts an integer number of bytes. Human-readable values may use `KB`, `MB`, `GB`, and `TB` for decimal units or `KiB`, `MiB`, `GiB`, and `TiB` for binary units.
 
+To profile a subset of rows, set `where` on a model or source. For example, if `event_date` is a partition column, this condition selects recent partitions:
+
+```yaml
+config:
+  meta:
+    profiling:
+      enabled: true
+      where: "event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+      dimensions: [event_date, service]
+      max_bytes_billed: "5 GiB"
+```
+
+`where` is a BigQuery SQL condition without the `WHERE` keyword. Madako trims leading and trailing whitespace and rejects empty conditions; BigQuery validates SQL syntax and column names during the dry run or execution. Omit `where` or set it to `null` to profile all rows. The same condition applies before aggregation in Overall and every dimension, so all metrics describe the selected rows. Use a condition that selects the same rows across queries; non-deterministic expressions such as `RAND()` can cause dimension row counts to disagree with Overall.
+
+Filtering reduces scanned bytes when BigQuery can prune partitions or storage blocks; other conditions may still scan the full relation. `max_bytes_billed` remains a guard, and its dry-run estimate uses the filtered SQL. Inspect the condition and estimate with `madako plan`, or add `--show-sql` to see the generated queries. See [BigQuery partition pruning](https://docs.cloud.google.com/bigquery/docs/querying-partitioned-tables) for filter requirements.
+
+The Web UI labels filtered results as `Filtered`, shows the condition, and displays `profiled rows`. Overall represents all selected rows. Changing, adding, or removing the condition invalidates saved profiles on the next dbt import; re-profiling refreshes the results. A condition using `CURRENT_DATE()` is evaluated at query time, while saved results remain associated with their displayed profiling timestamp. Sampling is not supported.
+
 ### 2. Configure Madako
 
 Create `madako.toml` in the root of your dbt project:

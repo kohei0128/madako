@@ -58,6 +58,7 @@ ProfilingConfigのフィールドは影響範囲によって分類されます:
 - `treat_empty_string_as_null`: missing_count/missing_rate の計算に影響
 - `dimensions`: どの次元で分割するか
 - `max_dimension_values`: 保存するSTRING dimensionの有無に影響
+- `where`: 集計対象の行を絞るSQL条件。追加・変更・削除時に保存済みprofileを無効化する
 - （将来追加される計算パラメータ）
 
 #### 実行制御フィールド
@@ -84,6 +85,8 @@ class ProfilingConfig(BaseModel):
 - 既存データの読み込み: デフォルト値で補完される
 - 保存時: 新しいフィールドを含めて保存
 - `profiling_signature()` に影響しなければ、既存profileを引き継ぐ
+
+`where`は既定値`None`で既存の`profiling_json`に保存する。旧storageにフィールドがなければ`None`として読み込むため、全行を対象にした既存profileは再import時も引き継ぐ。Parquet schema versionとProfile Computation Versionは変更しない。
 
 ### 非互換なフィールド変更
 

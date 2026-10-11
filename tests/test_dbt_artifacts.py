@@ -23,12 +23,14 @@ def dbt_project(tmp_path: Path) -> Path:
         "config": {"materialized": "view", "meta": {"profiling": {
             "enabled": True, "dimensions": ["event_date"],
             "max_dimension_values": 500, "max_bytes_billed": "1 KB",
+            "where": "  event_date >= DATE '2026-09-01'  ",
         }}},
     }
     source = {**model, "unique_id": "source.demo.raw.events", "resource_type": "source",
               "identifier": "raw_events", "schema": "raw",
               "depends_on": {"nodes": []},
-              "config": {"meta": {"profiling": {"enabled": True, "treat_empty_string_as_null": True}}}}
+              "config": {"meta": {"profiling": {"enabled": True, "treat_empty_string_as_null": True,
+                                                 "where": "amount > 0"}}}}
     manifest = {
         "metadata": {"project_name": "demo", "generated_at": "2026-09-01T00:00:00Z"},
         "nodes": {model["unique_id"]: model,
@@ -62,6 +64,8 @@ def test_reads_models_sources_and_catalog(dbt_project: Path) -> None:
     assert model.profiling.dimensions == ["event_date"]
     assert model.profiling.max_dimension_values == 500
     assert model.profiling.max_bytes_billed == 1000
+    assert model.profiling.where == "event_date >= DATE '2026-09-01'"
+    assert source.profiling.where == "amount > 0"
     assert source.profiling.treat_empty_string_as_null
     assert source.relation_name == "`project.raw.raw_events`"
 

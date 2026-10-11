@@ -47,6 +47,23 @@ def test_plan_resolves_config_and_estimates_cost() -> None:
     assert calls[0][1:] == ("project", "asia-northeast1")
 
 
+def test_cost_estimation_uses_filtered_queries() -> None:
+    model = configured_model()
+    model.profiling.where = "event_date >= DATE '2026-09-01'"
+    estimated_sql = []
+
+    def estimate(sql, *_):
+        estimated_sql.append(sql)
+        assert "WHERE (\nevent_date >= DATE '2026-09-01'\n  )" in sql
+        return 8_000
+
+    plan = create_profile_plan([model], estimator=estimate)
+
+    assert estimated_sql == [item.sql for item in plan]
+    assert len(plan) == 2
+    assert all(item.executable for item in plan)
+
+
 def test_plan_skips_cost_estimation_by_default() -> None:
     model = configured_model().model_copy(update={
         "profiling": ProfilingConfig(enabled=True),

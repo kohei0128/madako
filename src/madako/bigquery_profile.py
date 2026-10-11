@@ -19,16 +19,18 @@ def generate_profile_sql(model: ModelProfile, dimension: str | None = None) -> s
     supported = [column for column in model.columns if column.data_type in SUPPORTED_TYPES]
     if not supported:
         raise ResultValidationError(f"no supported columns found for {model.name}")
+    source_sql = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
+    if model.profiling.where is not None:
+        source_sql += f"\n  WHERE (\n{model.profiling.where}\n  )"
     if dimension is None:
         overall_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
         overall_structs = _metric_structs(supported)
-        relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
         return f"""
 WITH overall_agg AS (
   SELECT
     COUNT(*) AS record_count,
     {overall_metrics}
-  FROM {relation}
+  FROM {source_sql}
 )
 SELECT
   CAST(NULL AS STRING) AS dimension_name,
@@ -51,14 +53,13 @@ ORDER BY column_order
 
     dimension_metrics = _aggregate_expressions(supported, model.profiling.treat_empty_string_as_null)
     dimension_structs = _metric_structs(supported)
-    relation = model.relation_name or f"`{model.database}.{model.schema_name}.{model.name}`"
     return f"""
 WITH dimension_agg AS (
   SELECT
     CAST(`{dimension}` AS STRING) AS dimension_value,
     COUNT(*) AS record_count,
     {dimension_metrics}
-  FROM {relation}
+  FROM {source_sql}
   GROUP BY `{dimension}`
 )
 SELECT

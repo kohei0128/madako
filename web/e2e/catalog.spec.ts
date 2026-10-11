@@ -16,7 +16,33 @@ test("selects same-name relations by unique id", async ({ page }) => {
 
   const model = explorer.getByRole("button", { name: /model events$/ });
   await model.click();
-  await expect(page.getByText("10 total rows")).toBeVisible();
+  await expect(page.getByText("10 profiled rows")).toBeVisible();
+  await expect(page.getByLabel("Profile row filter")).toHaveCount(0);
+});
+
+test("shows the saved row filter for Overall and dimensions", async ({ page }) => {
+  const condition = "event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)\nOR category = '" + "recent".repeat(60) + "'";
+  await page.route("**/api/models/model.phase4.events/profile", async (route) => {
+    const response = await route.fetch();
+    const model = await response.json();
+    model.profiling.where = condition;
+    await route.fulfill({ response, json: model });
+  });
+  await page.reload();
+
+  const scope = page.getByLabel("Profile row filter");
+  await expect(scope.getByText("Filtered", { exact: true })).toBeVisible();
+  await expect(scope.locator("code")).toHaveText(condition);
+  await expect(page.getByText("10 profiled rows")).toBeVisible();
+  const [codeBox, scopeBox] = await Promise.all([scope.locator("code").boundingBox(), scope.boundingBox()]);
+  expect(codeBox!.x + codeBox!.width).toBeLessThanOrEqual(scopeBox!.x + scopeBox!.width);
+
+  await page.getByRole("button", { name: "event_date" }).click();
+  await expect(scope.locator("code")).toHaveText(condition);
+  await expect(page.getByText("10 profiled rows")).toBeVisible();
+
+  await page.locator(".explorer").getByRole("button", { name: /source events$/ }).click();
+  await expect(scope).toHaveCount(0);
 });
 
 test("opens relations from shareable URLs and supports browser history", async ({ page }) => {
@@ -30,7 +56,7 @@ test("opens relations from shareable URLs and supports browser history", async (
 
   await page.goBack();
   await expect(page).toHaveURL(/\/relations\/model\.phase4\.events$/);
-  await expect(page.getByText("10 total rows")).toBeVisible();
+  await expect(page.getByText("10 profiled rows")).toBeVisible();
 });
 
 test("refreshes metadata and keeps the selected relation", async ({ page }) => {
@@ -59,7 +85,7 @@ test("filters the catalog to profiled relations and combines with search", async
   await expect(explorer.locator(".model-item")).toHaveCount(1);
   await expect(explorer.locator(".filter-summary")).toContainText("Showing 1 of 5");
   await expect(page).toHaveURL(/\/relations\/model\.phase4\.events$/);
-  await expect(page.getByText("10 total rows")).toBeVisible();
+  await expect(page.getByText("10 profiled rows")).toBeVisible();
 
   await explorer.getByPlaceholder("Model or source name").fill("users");
   await expect(explorer.locator(".model-item")).toHaveCount(0);

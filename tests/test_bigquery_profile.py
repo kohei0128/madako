@@ -1,5 +1,7 @@
 import subprocess
 
+import pytest
+
 from madako.bigquery_profile import ProfilingError, generate_profile_sql, rows_to_profiles
 from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
 
@@ -115,6 +117,26 @@ def test_generates_overall_only_sql_without_dimension() -> None:
     assert "overall_agg" in sql
     assert "dimension_agg" not in sql
     assert "CAST(NULL AS STRING) AS dimension_name" in sql
+    assert "WHERE" not in sql
+
+
+@pytest.mark.parametrize("resource_type", ["model", "source"])
+@pytest.mark.parametrize("dimension", [None, "event_date", "category"])
+def test_where_filters_before_overall_and_dimension_aggregation(resource_type, dimension) -> None:
+    condition = "event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)\nOR category = 'recent' -- also include recent"
+    configured = model().model_copy(update={
+        "resource_type": resource_type,
+        "profiling": ProfilingConfig(where=condition),
+    })
+
+    sql = generate_profile_sql(configured, dimension)
+
+    source = f"FROM `project.dataset.events`\n  WHERE (\n{condition}\n  )"
+    assert sql.count(source) == 1
+    if dimension is not None:
+        assert f"{source}\n  GROUP BY `{dimension}`" in sql
+    else:
+        assert f"{source}\n)" in sql
 
 
 def test_empty_strings_can_be_counted_as_missing_and_excluded_from_distinct() -> None:
