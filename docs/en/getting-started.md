@@ -54,7 +54,11 @@ If `dimensions` is omitted, Madako only calculates an overall profile. A dimensi
 
 With `treat_empty_string_as_null: true`, empty strings (`''`) in STRING columns are included in the Missing metric alongside NULL values. The default is `false`, which counts only NULL as Missing. Strings containing only whitespace, such as `' '`, are not empty strings.
 
-Set `max_bytes_billed` on any model or source for which you want a preflight query-cost check. Madako dry-runs every query for that relation and starts no real query for it if any estimate exceeds the limit. Relations without this setting skip the dry run.
+Set `max_bytes_billed` on a model or source to limit the total billed bytes for that relation in one profiling run. Madako dry-runs Overall and every configured dimension query and compares their **sum** with the limit. If any relation exceeds its budget, no real query in the entire plan starts. Relations without this setting skip the dry run.
+
+For example, a `"1 GB"` limit blocks two queries estimated at 600 MB each, even though each query individually fits. `madako plan` shows each query estimate, the relation total, and its budget.
+
+All queries for a relation share one budget. For example, with a 1 GB limit, if the first query uses 600 MB, later queries have 400 MB left. Estimates can differ from actual usage, so profiling stops if the remaining budget is insufficient, even when the preflight estimate was within the limit.
 
 ```yaml
 config:
@@ -66,7 +70,7 @@ config:
 
 `max_bytes_billed` also accepts an integer number of bytes. Human-readable values may use `KB`, `MB`, `GB`, and `TB` for decimal units or `KiB`, `MiB`, `GiB`, and `TiB` for binary units.
 
-To profile a subset of rows, set `where` on a model or source. For example, if `event_date` is a partition column, this condition selects recent partitions:
+To profile a subset of rows, set `where` on a model or source. This example uses `event_date` to select rows dated seven days ago or later:
 
 ```yaml
 config:
@@ -80,7 +84,7 @@ config:
 
 `where` is a BigQuery SQL condition without the `WHERE` keyword. Madako trims leading and trailing whitespace and rejects empty conditions; BigQuery validates SQL syntax and column names during the dry run or execution. Omit `where` or set it to `null` to profile all rows. The same condition applies before aggregation in Overall and every dimension, so all metrics describe the selected rows. Use a condition that selects the same rows across queries; non-deterministic expressions such as `RAND()` can cause dimension row counts to disagree with Overall.
 
-Filtering reduces scanned bytes when BigQuery can prune partitions or storage blocks; other conditions may still scan the full relation. `max_bytes_billed` remains a guard, and its dry-run estimate uses the filtered SQL. Inspect the condition and estimate with `madako plan`, or add `--show-sql` to see the generated queries. See [BigQuery partition pruning](https://docs.cloud.google.com/bigquery/docs/querying-partitioned-tables) for filter requirements.
+Selecting fewer rows does not necessarily reduce processed bytes by the same proportion. When `max_bytes_billed` is set, Madako estimates usage for the filtered queries. Inspect the condition and estimate with `madako plan`, or add `--show-sql` to see the generated queries.
 
 The Web UI labels filtered results as `Filtered`, shows the condition, and displays `profiled rows`. Overall represents all selected rows. Changing, adding, or removing the condition invalidates saved profiles on the next dbt import; re-profiling refreshes the results. A condition using `CURRENT_DATE()` is evaluated at query time, while saved results remain associated with their displayed profiling timestamp. Sampling is not supported.
 
@@ -161,8 +165,8 @@ madako profile --help
 ## Query safety
 
 - Madako dry-runs queries only for relations that set `max_bytes_billed`.
-- If any dry-run estimate for a relation exceeds its limit, Madako starts no real query for that relation.
-- The summary reports the total bytes processed by BigQuery. Verbose output also shows bytes per query.
+- If the sum of a relation’s dry-run estimates exceeds its limit, Madako starts no real query in the entire plan. During execution, all queries for that relation share the remaining billed-byte budget.
+- The summary reports the actual total bytes processed. Verbose output also shows bytes per query.
 - Madako runs the Overall profile before a STRING dimension and uses its distinct count without an additional query to decide whether to proceed.
 - Different relations run concurrently up to `bigquery.threads`; queries for one relation run sequentially.
 - A STRING dimension over `max_dimension_values` is skipped with a reason while other profiling continues.

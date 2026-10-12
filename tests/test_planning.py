@@ -2,8 +2,9 @@ from threading import Barrier, Lock
 
 import pytest
 
+from madako import BigQueryAdapter, ProfilePlan, QueryExecution
 from madako.bigquery_profile import ProfilingError
-from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+from madako.models import ColumnMetadata, ModelProfile, ProfileSlice, ProfilingConfig
 from madako.planning import create_profile_plan, execute_profile_plan
 
 
@@ -33,13 +34,13 @@ def test_plan_resolves_config_and_estimates_cost() -> None:
 
     def estimate(sql: str, project: str, location: str) -> int:
         calls.append((sql, project, location))
-        return 8_000
+        return 4_000
 
     plan = create_profile_plan([configured_model()], estimator=estimate)
 
     assert [item.dimension for item in plan] == [None, "event_date"]
-    assert all(item.estimated_bytes == 8_000 for item in plan)
-    assert all(item.executable for item in plan)
+    assert all(item.estimated_bytes == 4_000 for item in plan)
+    assert ProfilePlan(items=tuple(plan)).executable
     assert all(item.skipped_columns == ("payload",) for item in plan)
     assert all(item.project == "project" for item in plan)
     assert all(item.location == "asia-northeast1" for item in plan)
@@ -55,13 +56,13 @@ def test_cost_estimation_uses_filtered_queries() -> None:
     def estimate(sql, *_):
         estimated_sql.append(sql)
         assert "WHERE (\nevent_date >= DATE '2026-09-01'\n  )" in sql
-        return 8_000
+        return 4_000
 
     plan = create_profile_plan([model], estimator=estimate)
 
     assert estimated_sql == [item.sql for item in plan]
     assert len(plan) == 2
-    assert all(item.executable for item in plan)
+    assert ProfilePlan(items=tuple(plan)).executable
 
 
 def test_plan_skips_cost_estimation_by_default() -> None:
@@ -77,7 +78,7 @@ def test_plan_skips_cost_estimation_by_default() -> None:
     assert len(plan) == 1
     assert plan[0].estimated_bytes is None
     assert plan[0].max_bytes_billed is None
-    assert plan[0].executable
+    assert ProfilePlan(items=tuple(plan)).executable
 
 
 def test_plan_supports_numeric_and_bignumeric_columns() -> None:
@@ -97,7 +98,108 @@ def test_plan_supports_numeric_and_bignumeric_columns() -> None:
 def test_plan_marks_estimate_over_limit_as_blocked() -> None:
     plan = create_profile_plan([configured_model()], estimator=lambda *_: 10_001)
 
-    assert plan[0].executable is False
+    assert ProfilePlan(items=tuple(plan)).executable is False
+
+
+@pytest.mark.parametrize("estimate, executable", [(0, True), (5_000, True), (5_001, False), (6_000, False)])
+def test_budget_applies_to_sum_of_overall_and_dimensions(estimate, executable) -> None:
+    model = configured_model()
+    items = create_profile_plan([model], estimator=lambda *_: estimate)
+    plan = ProfilePlan(items=tuple(items))
+
+    assert plan.estimated_bytes == 2 * estimate
+    assert plan.relation_costs[model.unique_id].estimated_bytes == 2 * estimate
+    assert plan.executable is executable
+    if not executable:
+        result = execute_profile_plan(
+            [model], items,
+            runner=lambda *_: pytest.fail("No query should run when the relation total exceeds its limit"),
+        )
+        assert not result.complete
+        assert all(item.status == "skipped" for item in result.results)
+        assert all(item.error == "relation estimated bytes exceed max_bytes_billed" for item in result.results)
+
+
+def test_same_named_model_and_source_have_separate_budgets() -> None:
+    first = configured_model()
+    second = first.model_copy(update={"unique_id": "source.test.raw.events", "resource_type": "source"})
+    plan = ProfilePlan(items=tuple(create_profile_plan([first, second], estimator=lambda *_: 4_000)))
+
+    assert plan.estimated_bytes == 16_000
+    assert plan.executable
+    assert len(plan.relation_costs) == 2
+    assert all(cost.estimated_bytes == 8_000 for cost in plan.relation_costs.values())
+
+
+def test_over_budget_relation_blocks_entire_mixed_plan() -> None:
+    first = configured_model()
+    second = first.model_copy(deep=True, update={"unique_id": "source.test.raw.events"})
+    second.profiling.max_bytes_billed = None
+    plan = create_profile_plan([first, second], estimator=lambda *_: 6_000)
+
+    assert ProfilePlan(items=tuple(plan)).estimated_bytes is None
+    assert not ProfilePlan(items=tuple(plan)).executable
+    execution = execute_profile_plan(
+        [first, second], plan, threads=2,
+        runner=lambda *_: pytest.fail("An over-budget relation must block the entire plan"),
+    )
+    assert not execution.complete
+    assert all(result.status == "skipped" for result in execution.results)
+    assert execution.results[-1].error == "plan contains another relation over max_bytes_billed"
+
+
+@pytest.mark.parametrize("threads", [1, 2])
+@pytest.mark.parametrize("billed", [0, 4_000, 5_000])
+def test_execution_shares_remaining_billed_budget_only_within_each_relation(threads, billed) -> None:
+    first = configured_model()
+    second = first.model_copy(update={"unique_id": "source.test.raw.events", "relation_name": "`raw.events`"})
+    calls = []
+
+    class Adapter(BigQueryAdapter):
+        def execute(self, sql, project, location, max_bytes_billed):
+            calls.append(("raw" if "`raw.events`" in sql else "model", max_bytes_billed))
+            # Processed bytes intentionally differ: only billed bytes spend the budget.
+            return QueryExecution(rows=[], bytes_processed=8_000, bytes_billed=billed)
+
+        def parse_profile_rows(self, model, rows, dimension):
+            return [ProfileSlice(dimension_name=dimension, record_count=1, columns=[])]
+
+    plan = create_profile_plan([first, second], estimator=lambda *_: 1_000)
+    execution = execute_profile_plan([first, second], plan, adapter=Adapter(), threads=threads)
+
+    assert execution.complete
+    for relation in ["model", "raw"]:
+        assert [maximum for name, maximum in calls if name == relation] == [10_000, 10_000 - billed]
+
+
+@pytest.mark.parametrize("billed", [None, 10_000, 10_001, -1])
+def test_exhausted_or_invalid_billed_usage_stops_later_queries(billed) -> None:
+    model = configured_model()
+    calls = []
+
+    class Adapter(BigQueryAdapter):
+        def execute(self, sql, project, location, max_bytes_billed):
+            calls.append(max_bytes_billed)
+            return QueryExecution(rows=[], bytes_billed=billed)
+
+        def parse_profile_rows(self, model, rows, dimension):
+            return [ProfileSlice(record_count=1, columns=[])]
+
+    plan = create_profile_plan([model], estimator=lambda *_: 1_000)
+    execution = execute_profile_plan([model], plan, adapter=Adapter())
+
+    assert calls == [10_000]
+    assert not execution.complete
+    assert not execution.models[0].profiles
+    assert any(result.status == "failed" for result in execution.results)
+
+
+def test_modified_plan_cannot_increase_relation_budget() -> None:
+    model = configured_model()
+    plan = create_profile_plan([model], estimator=lambda *_: 1_000)
+    plan = [item.model_copy(update={"max_bytes_billed": 20_000}) for item in plan]
+    with pytest.raises(ProfilingError, match="stale or modified plan"):
+        execute_profile_plan([model], plan, runner=lambda *_: pytest.fail("Modified budget must be rejected"))
 
 
 def test_plan_requires_enabled_selection() -> None:
@@ -132,7 +234,7 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
     plan = create_profile_plan([model], estimator=lambda *_: 1)
     calls: list[tuple[str, str, int]] = []
 
-    def run(sql: str, project: str, location: str, maximum: int) -> list[dict]:
+    def run(sql: str, project: str, location: str, maximum: int) -> QueryExecution:
         calls.append((project, location, maximum))
         dimension = (
             "processed_date" if "'processed_date' AS dimension_name" in sql
@@ -157,7 +259,7 @@ def test_execute_plan_combines_multiple_dimensions_and_updates_once() -> None:
                     "max_value": "2026-09-01",
                     "true_count": None,
                 })
-        return rows
+        return QueryExecution(rows=rows, bytes_billed=1)
 
     execution = execute_profile_plan([model], plan, runner=run)
 
@@ -248,7 +350,7 @@ def test_high_cardinality_string_dimension_is_skipped_without_stopping_date_dime
     plan = create_profile_plan([model], estimator=lambda *_: 1)
     calls: list[str] = []
 
-    def run(sql: str, *_args) -> list[dict]:
+    def run(sql: str, *_args) -> QueryExecution:
         calls.append(sql)
         dimension = "event_date" if "'event_date' AS dimension_name" in sql else None
         rows = []
@@ -267,7 +369,7 @@ def test_high_cardinality_string_dimension_is_skipped_without_stopping_date_dime
                 "max_value": "2026-09-01" if column.data_type == "DATE" else None,
                 "true_count": None,
             })
-        return rows
+        return QueryExecution(rows=rows, bytes_billed=1)
 
     execution = execute_profile_plan([model], plan, runner=run)
 
@@ -336,7 +438,7 @@ def test_execute_plan_rejects_all_work_before_running_blocked_item() -> None:
     assert calls == []
     assert execution.complete is False
     assert execution.results[0].status == "skipped"
-    assert execution.results[0].error == "estimated bytes exceed max_bytes_billed"
+    assert execution.results[0].error == "relation estimated bytes exceed max_bytes_billed"
 
 
 def test_execute_plan_marks_failure_and_skips_remaining_items() -> None:

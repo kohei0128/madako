@@ -66,7 +66,7 @@ ProfilingConfigのフィールドは影響範囲によって分類されます:
 これらのフィールド変更は signature に影響しません:
 
 - `enabled`: profiling の有効/無効
-- `max_bytes_billed`: コスト制限（planの実行可否に影響するが、結果には影響しない）
+- `max_bytes_billed`: 1回の実行におけるrelation全体（Overallと全dimension）の課金bytes上限（planの実行可否に影響するが、結果には影響しない）
 
 ### 互換性のあるフィールド追加
 

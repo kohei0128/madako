@@ -30,8 +30,32 @@ def test_plan_prints_row_filter_and_filtered_cost(capsys):
 
     output = capsys.readouterr().out
     assert "WHERE: amount > 0" in output
-    assert "Estimated: 100 B" in output
+    assert "Query estimated: 100 B" in output
     assert "[READY]" in output
+
+
+def test_plan_and_progress_show_combined_relation_budget(capsys, tmp_path):
+    from madako.cli import _print_plan
+    from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+    from madako.planning import create_profile_plan
+
+    model = ModelProfile(
+        unique_id="model.test.events", name="events", database="project", schema_name="dataset",
+        materialization="table", columns=[ColumnMetadata(name="day", data_type="DATE")],
+        profiling=ProfilingConfig(enabled=True, dimensions=["day"], max_bytes_billed=1000),
+    )
+    plan = ProfilePlan(items=tuple(create_profile_plan([model], estimator=lambda *_: 600)))
+    _print_plan(plan)
+    output = capsys.readouterr().out
+    assert output.count("[BLOCKED]") == 2
+    assert "Query estimated: 600 B" in output
+    assert output.count("Relation estimated total: 1.2 KiB") == 1
+    assert "Relation maximum billed: 1,000 B" in output
+
+    output = StringIO()
+    ProfileRenderer(tmp_path, stream=output).plan_completed(plan)
+    assert output.getvalue().count("Error:") == 1
+    assert "1.2 KiB relation total estimated exceeds 1,000 B relation limit" in output.getvalue()
 
 
 class Terminal(StringIO):

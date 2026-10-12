@@ -62,7 +62,7 @@ See the [English getting started guide](https://github.com/kohei0128/madako/blob
 
 - **Data with context:** inspect profiles alongside dbt descriptions, tests, and direct lineage, with date or category breakdowns when you need them.
 - **Profiling without changing your DAG:** avoid adding profiling-specific dbt models or persistent BigQuery tables by storing results locally as Parquet files.
-- **Explicit query controls:** opt models into profiling and set per-relation maximum bytes billed in dbt YAML.
+- **Explicit query controls:** opt models into profiling and set a shared billed-byte budget for each relation’s Overall and dimension queries in dbt YAML.
 
 Evaluating dbt-profiler? It provides dbt-native macros and generated outputs, while Madako runs profiling for configured models and sources, stores the results separately, and presents them in its Web UI. See the [short comparison in the getting started guide](https://github.com/kohei0128/madako/blob/main/docs/en/getting-started.md#faq-how-is-madako-different-from-dbt-profiler).
 

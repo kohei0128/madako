@@ -23,7 +23,7 @@ React ← FastAPI ← DuckDB ← local Parquet storage ← save
 
 ## 重要な実行保証
 
-- `plan()`は`max_bytes_billed`を設定したrelationだけdry runする。1つでも上限を超えるplanは、含まれる実queryをすべてskipする。
+- `plan()`は`max_bytes_billed`を設定したrelationだけdry runし、Overallと全dimensionの見積合計をrelationの上限と比較する。1つでもrelationが上限を超えるplanは、含まれる実queryをすべてskipする。実行時はqueryごとに実際の課金bytesを差し引き、残額を次のqueryの上限として渡す。
 - `run()`はrelation、schema、profiling設定、計算versionがplan作成時から変わっていないことを実行前に確認する。
 - Overall、column集合・型・重複、件数・率、dimension bucketの行数合計を検証する。`bq`の取得上限100,000 metric rowsに達した不完全な可能性がある結果は拒否する。
 - STRING dimensionはOverallの`distinct_count`を使い、`max_dimension_values`超過時はそのdimensionだけskipする。判定専用queryは発行しない。
