@@ -28,6 +28,8 @@ def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
         print(f"[{status}] {item.model.unique_id}")
         print(f"  Relation: {item.model.relation_name}")
         print(f"  Dimension: {item.dimension or 'Overall'}")
+        if item.model.profiling.where is not None:
+            print(f"  WHERE: {item.model.profiling.where}")
         if item.estimated_bytes is None:
             print("  Query cost check: disabled")
         else:

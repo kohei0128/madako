@@ -14,6 +14,26 @@ from madako.planning import ProfileProgress
 from madako.progress import ProfileRenderer
 
 
+def test_plan_prints_row_filter_and_filtered_cost(capsys):
+    from madako.cli import _print_plan
+    from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+    from madako.planning import create_profile_plan
+
+    model = ModelProfile(
+        name="events", database="project", schema_name="dataset", materialization="table",
+        columns=[ColumnMetadata(name="amount", data_type="INT64")],
+        profiling=ProfilingConfig(enabled=True, where="amount > 0", max_bytes_billed=1000),
+    )
+    plan = ProfilePlan(items=tuple(create_profile_plan([model], estimator=lambda *_: 100)))
+
+    _print_plan(plan)
+
+    output = capsys.readouterr().out
+    assert "WHERE: amount > 0" in output
+    assert "Estimated: 100 B" in output
+    assert "[READY]" in output
+
+
 class Terminal(StringIO):
     def isatty(self):
         return True

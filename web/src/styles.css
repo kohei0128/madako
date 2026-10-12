@@ -47,6 +47,9 @@ h1 { font-size: 25px; letter-spacing: -.035em; margin: 0; }
 header p { color: #5f6e69; font-size: 12px; margin: 7px 0 10px; }
 .metadata { display: flex; align-items: baseline; gap: 20px; min-height: 14px; color: #6d7c77; font-size: 10px; line-height: 14px; }
 .metadata b { color: #24332e; }
+.profile-scope { display: flex; align-items: baseline; gap: 10px; margin-top: 12px; padding: 9px 11px; background: #eef3f1; border-left: 2px solid #8ba89c; font-size: 11px; }
+.profile-scope strong { flex-shrink: 0; color: #176846; }
+.profile-scope code { min-width: 0; color: #31443d; white-space: pre-wrap; overflow-wrap: anywhere; }
 .latest-partition { display: inline-flex; align-items: baseline; gap: 7px; padding-left: 9px; border-left: 2px solid #7ba994; white-space: nowrap; }
 .latest-partition span { color: #788681; font-size: 9px; text-transform: uppercase; letter-spacing: .07em; }
 .latest-partition strong { color: #263630; font-size: 11px; }

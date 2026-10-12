@@ -286,7 +286,7 @@ def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: 
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("change", ["remove", "config", "schema", "mutate_plan"])
+@pytest.mark.parametrize("change", ["remove", "config", "where", "schema", "mutate_plan"])
 def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
     from madako import ProfilingError
     model = configured_model()
@@ -298,6 +298,9 @@ def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
         write_profile_storage([], tmp_path)
     elif change == "config":
         model.profiling.max_bytes_billed = 1
+        write_profile_storage([model], tmp_path)
+    elif change == "where":
+        model.profiling.where = "amount > 0"
         write_profile_storage([model], tmp_path)
     elif change == "schema":
         model.columns.pop()
@@ -387,6 +390,64 @@ def test_reimport_preserves_profiles_when_execution_controls_change(
     assert getattr(persisted.profiling, field) == value
 
 
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(None, "amount > 0"), ("amount > 0", "amount > 5"), ("amount > 0", None),
+     ("amount > 0", "amount > 0"), ("amount > 0", "  amount > 0\n")],
+)
+def test_reimport_only_keeps_profiles_with_the_same_where(tmp_path, monkeypatch, before, after) -> None:
+    from madako.storage import ParquetProfileStorage, import_dbt_profiles
+
+    model = configured_model()
+    model.profiling.where = before
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([model])
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    assert app.profile().successful
+    previous = app.models()[0]
+    model.profiling = ProfilingConfig(**{**model.profiling.model_dump(), "where": after})
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
+
+    import_dbt_profiles(tmp_path, storage)
+
+    persisted = storage.load()[0]
+    if before == model.profiling.where:
+        assert persisted.profiles == previous.profiles
+        assert persisted.profiled_at == previous.profiled_at
+    else:
+        assert persisted.profiles == []
+        assert persisted.profiled_at is None
+    assert persisted.profiling.where == model.profiling.where
+
+
+def test_legacy_storage_without_where_keeps_unfiltered_profiles_on_reimport(tmp_path, monkeypatch) -> None:
+    import json
+
+    import duckdb
+
+    from madako.storage import ParquetProfileStorage, import_dbt_profiles
+
+    model = configured_model()
+    storage = ParquetProfileStorage(tmp_path)
+    storage.save([model])
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    assert app.profile().successful
+    previous = storage.load()[0]
+    legacy_config = model.profiling.model_dump(exclude={"where"})
+    legacy_path = tmp_path / "legacy-models.parquet"
+    with duckdb.connect() as connection:
+        connection.execute("CREATE TABLE legacy AS SELECT * FROM read_parquet(?)", [str(tmp_path / "models.parquet")])
+        connection.execute("UPDATE legacy SET profiling_json = ?", [json.dumps(legacy_config)])
+        connection.execute("COPY legacy TO ? (FORMAT PARQUET)", [str(legacy_path)])
+    legacy_path.replace(tmp_path / "models.parquet")
+    assert storage.load()[0].profiling.where is None
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
+
+    import_dbt_profiles(tmp_path, storage)
+
+    assert storage.load()[0] == previous
+
+
 def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Path, monkeypatch) -> None:
     from madako.storage import ParquetProfileStorage, import_dbt_profiles
     current = configured_model()
@@ -405,8 +466,11 @@ def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Pa
     assert persisted.profile_version is None
 
 
-def test_empty_table_has_overall_without_date_buckets(tmp_path: Path) -> None:
-    write_profile_storage([configured_model()], tmp_path)
+@pytest.mark.parametrize("where", [None, "FALSE"])
+def test_empty_table_has_overall_without_date_buckets(tmp_path: Path, where: str | None) -> None:
+    model = configured_model()
+    model.profiling.where = where
+    write_profile_storage([model], tmp_path)
     rows = profile_rows()[:2]
     for row in rows:
         row.update(record_count="0", min_value=None, max_value=None, null_rate=None)
@@ -415,3 +479,4 @@ def test_empty_table_has_overall_without_date_buckets(tmp_path: Path) -> None:
     persisted = app.models()[0]
     assert len(persisted.profiles) == 1
     assert persisted.profiles[0].record_count == 0
+    assert persisted.profiling.where == where

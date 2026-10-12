@@ -101,6 +101,17 @@ class ProfilingConfig(BaseModel):
     max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
     max_bytes_billed: Annotated[int, Field(gt=0)] | None = None
     treat_empty_string_as_null: bool = False
+    where: str | None = None
+
+    @field_validator("where")
+    @classmethod
+    def normalize_where(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("where must be a non-empty SQL condition without the WHERE keyword")
+        return value
 
     @field_validator("max_bytes_billed", mode="before")
     @classmethod

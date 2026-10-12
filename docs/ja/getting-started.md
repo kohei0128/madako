@@ -66,6 +66,24 @@ config:
 
 `max_bytes_billed`はbyte数の整数でも指定できます。読みやすい文字列では、`KB`、`MB`、`GB`、`TB`（10進）と`KiB`、`MiB`、`GiB`、`TiB`（2進）を使用できます。
 
+対象行を絞る場合は、modelまたはsourceに`where`を指定します。例えば、`event_date`がpartition列であれば、次の条件で最近のpartitionだけを選択できます。
+
+```yaml
+config:
+  meta:
+    profiling:
+      enabled: true
+      where: "event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 7 DAY)"
+      dimensions: [event_date, service]
+      max_bytes_billed: "5 GiB"
+```
+
+`where`には`WHERE`キーワードを含まないBigQuery SQLの条件式を記述します。Madakoは前後の空白を除去し、空の条件式を設定エラーにします。SQLの構文や列名はdry runまたは実行時にBigQueryが検証します。未指定または`null`なら全行を対象にします。Overallと全dimensionの集計前に同じ条件を適用し、各metricは選択した行に対する実測値になります。queryごとに同じ行を選ぶ条件を使ってください。`RAND()`のような非決定的な式では、dimensionの行数合計がOverallと一致せず検証エラーになる場合があります。
+
+スキャン量が減るのは、BigQueryがpartitionやstorage blockを除外できる条件の場合です。他の条件ではrelation全体をスキャンすることがあります。`max_bytes_billed`は引き続き上限のガードとして働き、条件適用後のSQLでdry runします。`madako plan`で条件と見積を確認し、`--show-sql`で生成queryを表示できます。条件の要件は[BigQueryのpartition pruning](https://docs.cloud.google.com/bigquery/docs/querying-partitioned-tables)を参照してください。
+
+Web UIでは`Filtered`と条件式を表示し、行数を`profiled rows`と表記します。Overallは条件に合う全行を意味します。条件の追加・変更・削除後にdbt artifactを再importすると保存済みprofileが無効になり、再profileで結果が更新されます。`CURRENT_DATE()`を使う条件はquery実行時に評価され、保存済み結果は表示されたprofiling日時のものです。サンプリングには対応しません。
+
 ### 2. Madakoを設定する
 
 dbt projectのルートに`madako.toml`を作ります。

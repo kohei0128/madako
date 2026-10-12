@@ -57,6 +57,18 @@ def test_get_model_profile(storage: ParquetProfileStorage) -> None:
     assert payload["profiles"][0]["columns"][0]["distinct_ratio"] == 0.2
 
 
+def test_api_exposes_saved_row_filter(storage: ParquetProfileStorage) -> None:
+    models = storage.load()
+    condition = "event_date >= DATE '2026-09-01'\nOR category IS NULL"
+    models[0].profiling.where = condition
+    storage.save(models)
+
+    response = request(create_app(storage), f"/api/models/{models[0].unique_id}/profile")
+
+    assert response.status_code == 200
+    assert response.json()["profiling"]["where"] == condition
+
+
 def test_bundled_web_ui_is_served(storage: ParquetProfileStorage) -> None:
     response = request(create_app(storage), "/")
 
