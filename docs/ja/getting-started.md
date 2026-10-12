@@ -58,7 +58,7 @@ profiling設定を変更した後は、`dbt docs generate`または`dbt parse`�
 
 たとえば上限が`"1 GB"`の場合、各600 MBのqueryが2本あれば合計1.2 GBとなり、実行できません。`madako plan`にはqueryごとの見積、relationの合計見積、上限を表示します。
 
-実行時はrelationの残額を各BigQuery queryの`maximum_bytes_billed`に渡し、最小課金量や丸めを含む実際の課金bytesを差し引いてから次のqueryを実行します。見積と課金量は異なる場合があるため、事前判定を通過しても実行中に停止することがあります。Distinct数によってskipしたdimensionは実行時の予算を消費しませんが、事前判定にはその見積も含めます。独自adapterやrunnerは`QueryExecution.bytes_billed`を返してください。未報告の場合は安全側にqueryへ渡した上限全額を消費済みと扱い、そのrelationの後続queryは実行できません。
+relation内の全queryで上限を共有します。たとえば上限が1 GBで、最初のqueryが600 MBを使った場合、後続queryで使えるのは残り400 MBです。見積と実際の使用量には差があるため、事前の見積が上限内でも、実行中に予算が足りなくなれば処理を停止します。
 
 ```yaml
 config:
@@ -70,7 +70,7 @@ config:
 
 `max_bytes_billed`はbyte数の整数でも指定できます。読みやすい文字列では、`KB`、`MB`、`GB`、`TB`（10進）と`KiB`、`MiB`、`GiB`、`TiB`（2進）を使用できます。
 
-対象行を絞る場合は、modelまたはsourceに`where`を指定します。例えば、`event_date`がpartition列であれば、次の条件で最近のpartitionだけを選択できます。
+対象行を絞る場合は、modelまたはsourceに`where`を指定します。次の例では、`event_date`を使って7日前以降の行を選択します。
 
 ```yaml
 config:
@@ -84,7 +84,7 @@ config:
 
 `where`には`WHERE`キーワードを含まないBigQuery SQLの条件式を記述します。Madakoは前後の空白を除去し、空の条件式を設定エラーにします。SQLの構文や列名はdry runまたは実行時にBigQueryが検証します。未指定または`null`なら全行を対象にします。Overallと全dimensionの集計前に同じ条件を適用し、各metricは選択した行に対する実測値になります。queryごとに同じ行を選ぶ条件を使ってください。`RAND()`のような非決定的な式では、dimensionの行数合計がOverallと一致せず検証エラーになる場合があります。
 
-スキャン量が減るのは、BigQueryがpartitionやstorage blockを除外できる条件の場合です。他の条件ではrelation全体をスキャンすることがあります。`max_bytes_billed`は引き続き上限のガードとして働き、条件適用後のSQLでdry runします。`madako plan`で条件と見積を確認し、`--show-sql`で生成queryを表示できます。条件の要件は[BigQueryのpartition pruning](https://docs.cloud.google.com/bigquery/docs/querying-partitioned-tables)を参照してください。
+対象行を絞っても、処理量が同じ割合で減るとは限りません。`max_bytes_billed`を設定すると、条件を適用したqueryで使用量を見積もります。`madako plan`で条件と見積を確認し、`--show-sql`で生成queryを表示できます。
 
 Web UIでは`Filtered`と条件式を表示し、行数を`profiled rows`と表記します。Overallは条件に合う全行を意味します。条件の追加・変更・削除後にdbt artifactを再importすると保存済みprofileが無効になり、再profileで結果が更新されます。`CURRENT_DATE()`を使う条件はquery実行時に評価され、保存済み結果は表示されたprofiling日時のものです。サンプリングには対応しません。
 
@@ -166,7 +166,7 @@ madako profile --help
 
 - `max_bytes_billed`を指定したrelationだけ、実行前にqueryをdry runします。
 - relationごとのdry run見積の合計が上限を超える場合、plan全体の実queryを開始しません。実行時もrelation内の全queryで課金bytesの残額を共有します。
-- BigQueryが報告した合計処理量をsummaryへ表示し、verboseではqueryごとの処理量も表示します。
+- 実際の合計処理量をsummaryへ表示し、verboseではqueryごとの処理量も表示します。
 - STRING dimensionはOverallを先に実行し、追加queryなしでDistinct数を確認してから実行します。
 - 異なるrelationのqueryは`bigquery.threads`を上限に並列実行し、同じrelation内では順番に実行します。
 - `max_dimension_values`を超えるSTRING dimensionは理由を表示してskipし、他のprofileは継続します。
