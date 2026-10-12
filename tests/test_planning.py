@@ -466,3 +466,105 @@ def test_ambiguous_selector_requires_unique_id_before_estimation() -> None:
         create_profile_plan([first, second], selector="events", estimator=lambda *_: calls.append(True) or 1)
     assert not calls
     assert create_profile_plan([first, second], selector=second.unique_id, estimator=lambda *_: 1)[0].model.unique_id == second.unique_id
+
+
+@pytest.mark.parametrize("local_budget, expected", [(None, 8_000), (5_000, 5_000), (10_000, 8_000)])
+@pytest.mark.parametrize("resource_type", ["model", "source"])
+def test_shared_budget_uses_smaller_limit_without_changing_yaml(local_budget, expected, resource_type):
+    model = configured_model()
+    model.resource_type = resource_type
+    model.profiling.max_bytes_billed = local_budget
+    signature = model.profiling_signature()
+    events = []
+
+    items = create_profile_plan(
+        [model], max_bytes_billed=8_000, estimator=lambda *_: 3_000, progress=events.append,
+    )
+    cost = ProfilePlan(items=tuple(items)).relation_costs[model.unique_id]
+
+    assert cost.estimated_bytes == 6_000
+    assert cost.max_bytes_billed == expected
+    assert cost.executable is (expected >= 6_000)
+    assert all(item.max_bytes_billed == expected for item in items)
+    assert all(item.model.profiling.max_bytes_billed == local_budget for item in items)
+    assert model.profiling_signature() == signature
+    assert [event.event for event in events] == [
+        "estimate_started", "estimate_completed", "estimate_started", "estimate_completed",
+    ]
+
+
+@pytest.mark.parametrize("threads", [1, 2])
+def test_shared_budget_is_per_relation_and_spent_across_its_queries(threads):
+    first = configured_model()
+    first.profiling.max_bytes_billed = None
+    second = first.model_copy(update={
+        "unique_id": "source.test.raw.events", "resource_type": "source", "relation_name": "`raw.events`",
+    })
+    calls = []
+
+    class Adapter(BigQueryAdapter):
+        def execute(self, sql, project, location, max_bytes_billed):
+            calls.append(("raw" if "`raw.events`" in sql else "model", max_bytes_billed))
+            return QueryExecution(rows=[], bytes_billed=1_000)
+
+        def parse_profile_rows(self, model, rows, dimension):
+            return [ProfileSlice(dimension_name=dimension, record_count=1, columns=[])]
+
+    items = create_profile_plan([first, second], max_bytes_billed=4_000, estimator=lambda *_: 2_000)
+    plan = ProfilePlan(items=tuple(items))
+    assert plan.estimated_bytes == 8_000
+    assert plan.executable
+
+    execution = execute_profile_plan(
+        [first, second], items, max_bytes_billed=4_000, adapter=Adapter(), threads=threads,
+    )
+
+    assert execution.complete
+    for relation in ["model", "raw"]:
+        assert [limit for name, limit in calls if name == relation] == [4_000, 3_000]
+
+
+@pytest.mark.parametrize("threads", [1, 2])
+def test_shared_budget_overage_blocks_other_relations_before_execution(threads):
+    first = configured_model()
+    first.profiling.max_bytes_billed = None
+    second = first.model_copy(deep=True, update={
+        "unique_id": "source.test.raw.events", "resource_type": "source", "relation_name": "`raw.events`",
+    })
+    items = create_profile_plan(
+        [first, second], max_bytes_billed=4_000,
+        estimator=lambda sql, *_: 1_000 if "`raw.events`" in sql else 2_001,
+    )
+
+    execution = execute_profile_plan(
+        [first, second], items, max_bytes_billed=4_000, threads=threads,
+        runner=lambda *_: pytest.fail("No query should run if any relation exceeds the shared limit"),
+    )
+
+    assert not execution.complete
+    assert all(result.status == "skipped" for result in execution.results)
+    assert execution.results[-1].error == "plan contains another relation over max_bytes_billed"
+
+
+@pytest.mark.parametrize("maximum", [None, 0, -1, 3_000, 10_000])
+def test_execution_rejects_plan_with_different_shared_budget(maximum):
+    model = configured_model()
+    items = create_profile_plan([model], max_bytes_billed=4_000, estimator=lambda *_: 1_000)
+
+    with pytest.raises(ProfilingError, match="stale or modified plan|max_bytes_billed must be positive"):
+        execute_profile_plan(
+            [model], items, max_bytes_billed=maximum,
+            runner=lambda *_: pytest.fail("Mismatched shared policy must be rejected"),
+        )
+
+
+def test_modified_plan_cannot_relax_shared_budget():
+    model = configured_model()
+    items = create_profile_plan([model], max_bytes_billed=4_000, estimator=lambda *_: 1_000)
+    items = [item.model_copy(update={"max_bytes_billed": 10_000}) for item in items]
+
+    with pytest.raises(ProfilingError, match="stale or modified plan"):
+        execute_profile_plan(
+            [model], items, max_bytes_billed=4_000,
+            runner=lambda *_: pytest.fail("Modified shared budget must be rejected"),
+        )

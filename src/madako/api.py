@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, TypeAdapter
 
 from madako.exceptions import DataProfileError, PlanningError, StorageOperationError
 from madako.warehouse import WarehouseAdapter, complete_adapter
-from madako.models import ModelProfile
+from madako.models import MaxBytesBilled, ModelProfile
 from madako.planning import (
     Estimator,
     ProfileItemResult,
@@ -26,7 +26,7 @@ class ProfilePlan(BaseModel):
     A plan contains one or more items, each representing a profiling query
     for a specific model/source and optional dimension. The plan can be
     inspected before execution. Cost estimates are present only when the
-    relation config sets max_bytes_billed.
+    shared or relation config sets max_bytes_billed.
     """
 
     items: tuple[ProfilePlanItem, ...] = Field(
@@ -91,7 +91,12 @@ class ProfileResult(BaseModel):
 
 
 class DataProfile:
-    """Public entry point for planning and running dbt data profiles."""
+    """Public entry point for planning and running dbt data profiles.
+
+    max_bytes_billed caps each relation's total billed bytes per run. It accepts
+    bytes or a size such as "1 GB" and cannot relax a smaller YAML budget.
+    Python callers supply this explicitly; madako.toml is loaded by the CLI.
+    """
 
     def __init__(
         self,
@@ -101,7 +106,11 @@ class DataProfile:
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
         storage: ProfileStorage | None = None,
+        max_bytes_billed: int | str | None = None,
     ) -> None:
+        self._max_bytes_billed: int | None = TypeAdapter(MaxBytesBilled | None).validate_python(
+            max_bytes_billed
+        )
         self.storage_dir = Path(storage_dir)
         self._storage = storage if storage is not None else ParquetProfileStorage(self.storage_dir)
         warehouse = complete_adapter(adapter)
@@ -118,8 +127,12 @@ class DataProfile:
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
         storage: ProfileStorage | None = None,
+        max_bytes_billed: int | str | None = None,
     ) -> "DataProfile":
-        return cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter, storage=storage)
+        return cls(
+            storage_dir, estimator=estimator, runner=runner, adapter=adapter,
+            storage=storage, max_bytes_billed=max_bytes_billed,
+        )
 
     @classmethod
     def from_dbt_project(
@@ -131,8 +144,12 @@ class DataProfile:
         runner: Runner | None = None,
         adapter: WarehouseAdapter | None = None,
         storage: ProfileStorage | None = None,
+        max_bytes_billed: int | str | None = None,
     ) -> "DataProfile":
-        instance = cls(storage_dir, estimator=estimator, runner=runner, adapter=adapter, storage=storage)
+        instance = cls(
+            storage_dir, estimator=estimator, runner=runner, adapter=adapter,
+            storage=storage, max_bytes_billed=max_bytes_billed,
+        )
         try:
             import_dbt_profiles(Path(project_dir), instance._storage)
         except DataProfileError:
@@ -170,6 +187,7 @@ class DataProfile:
             selector=select,
             project=project,
             location=location,
+            max_bytes_billed=self._max_bytes_billed,
             adapter=self._adapter,
             estimator=self._estimator,
             progress=progress,
@@ -189,6 +207,7 @@ class DataProfile:
         execution = execute_profile_plan(
             models,
             list(plan.items),
+            max_bytes_billed=self._max_bytes_billed,
             adapter=self._adapter,
             runner=self._runner,
             progress=progress,

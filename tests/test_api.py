@@ -373,7 +373,9 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         received_storage_dir: Path,
         *,
         storage: ParquetProfileStorage,
+        max_bytes_billed: int | None,
     ) -> SimpleNamespace:
+        assert max_bytes_billed is None
         assert storage.directory == storage_dir
         calls.append(("import", received_project_dir, received_storage_dir))
         return app

@@ -145,6 +145,7 @@ def main() -> None:
         catalog = DataProfile.from_storage(
             storage_dir,
             storage=_storage(config, storage_dir),
+            max_bytes_billed=config.max_bytes_billed,
         )
         plan_result = catalog.plan(
             select=args.select,
@@ -164,6 +165,7 @@ def main() -> None:
                         catalog = DataProfile.from_dbt_project(
                             config.dbt_project_dir, storage_dir,
                             storage=_storage(config, storage_dir),
+                            max_bytes_billed=config.max_bytes_billed,
                         )
                     finally:
                         for warning in captured:

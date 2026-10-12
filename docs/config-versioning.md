@@ -108,6 +108,8 @@ class ProfilingConfig(BaseModel):
 
 `ModelProfile.profiling_signature()` は、作成済みplanを無効化する入力フィールドのsignatureを提供します。`enabled`や`max_bytes_billed`を含むため、実行条件が変わった古いplanは拒否されます。
 
+`madako.toml`の`[profiling].max_bytes_billed`は保存されたrelationのYAML設定を変更しません。plan itemは共通上限とYAML上限の小さい方を持ち、実行時には現在の共通上限とYAML設定から再計算した適用上限との一致を確認します。適用上限が変わったplanは拒否されます。共通上限だけの変更は保存済みprofileの互換性に影響しません。
+
 `ModelProfile.profile_result_signature()` は、保存済みprofileの計算結果と互換性があるかを判定します。`enabled`と`max_bytes_billed`は実行制御だけに使われるため除外され、これらを変更してdbt artifactを再importしても既存profileを保持します。
 
 両signatureには現在の`PROFILE_COMPUTATION_VERSION`も含む。対応型や計算SQLなど、artifactやProfilingConfigに現れない計算変更でも古いplanやprofileを識別できるようにする。

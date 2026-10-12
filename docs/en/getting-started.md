@@ -54,7 +54,7 @@ If `dimensions` is omitted, Madako only calculates an overall profile. A dimensi
 
 With `treat_empty_string_as_null: true`, empty strings (`''`) in STRING columns are included in the Missing metric alongside NULL values. The default is `false`, which counts only NULL as Missing. Strings containing only whitespace, such as `' '`, are not empty strings.
 
-Set `max_bytes_billed` on a model or source to limit the total billed bytes for that relation in one profiling run. Madako dry-runs Overall and every configured dimension query and compares their **sum** with the limit. If any relation exceeds its budget, no real query in the entire plan starts. Relations without this setting skip the dry run.
+Set `max_bytes_billed` on a model or source to limit the total billed bytes for that relation in one profiling run. Madako dry-runs Overall and every configured dimension query and compares their **sum** with the limit. If any relation exceeds its budget, no real query in the entire plan starts. A shared limit in `madako.toml` also enables this check for relations without a YAML limit. Relations skip the dry run only when neither limit is set.
 
 For example, a `"1 GB"` limit blocks two queries estimated at 600 MB each, even though each query individually fits. `madako plan` shows each query estimate, the relation total, and its budget.
 
@@ -102,6 +102,9 @@ project = "your-gcp-project"
 location = "asia-northeast1"
 threads = 4
 
+[profiling]
+max_bytes_billed = "1 GB"
+
 [server]
 host = "127.0.0.1"
 port = 8000
@@ -112,6 +115,17 @@ keep_generations = 3
 ```
 
 Relative paths are resolved from the directory containing `madako.toml`. Madako searches for this file from the current directory upward, so commands can run from anywhere inside the project. Use a different file with `madako --config path/to/madako.toml <command>`.
+
+`profiling.max_bytes_billed` sets a shared upper limit for every enabled model and source. The limit applies separately to each relation in one run, including its Overall query and all dimension queries. If a relation also sets `max_bytes_billed` in YAML, Madako uses the smaller limit: with a shared limit of `"1 GB"`, YAML `"500 MB"` uses 500 MB and YAML `"2 GB"` uses 1 GB. Omitting the shared limit leaves the YAML limit in effect. Both settings accept integer bytes or a size such as `"1 GB"` or `"1 GiB"`.
+
+To inspect each relation's total estimate and applied limit, refresh the saved metadata and view the plan:
+
+```bash
+madako import-dbt
+madako plan
+```
+
+If any relation is over its limit, the entire plan stops before executing queries and reports the relation and estimate. Adjust that relation's `where` condition to narrow the rows, regenerate the dbt artifacts, and try again.
 
 `bigquery.threads` is the maximum number of relations profiled concurrently and defaults to 4. Different relations can run in parallel. Within one relation, Madako completes the Overall query before running dimension queries sequentially. Override the value for one run with `madako profile --threads 8`.
 
@@ -164,7 +178,7 @@ madako profile --help
 
 ## Query safety
 
-- Madako dry-runs queries only for relations that set `max_bytes_billed`.
+- Madako dry-runs queries when a shared or YAML `max_bytes_billed` limit applies.
 - If the sum of a relation’s dry-run estimates exceeds its limit, Madako starts no real query in the entire plan. During execution, all queries for that relation share the remaining billed-byte budget.
 - The summary reports the actual total bytes processed. Verbose output also shows bytes per query.
 - Madako runs the Overall profile before a STRING dimension and uses its distinct count without an additional query to decide whether to proceed.
@@ -204,12 +218,15 @@ from madako import DataProfile
 catalog = DataProfile.from_dbt_project(
     project_dir="path/to/dbt-project",
     storage_dir=".madako",
+    max_bytes_billed="1 GB",
 )
 plan = catalog.plan(select="events")
 result = catalog.run(plan)
 
 print(result.successful)
 ```
+
+The Python API accepts the shared budget through `max_bytes_billed` on `DataProfile`, `from_storage`, or `from_dbt_project`. It does not automatically load `madako.toml`.
 
 The distribution includes a PEP 561 `py.typed` marker, so type checkers such as mypy can use inline annotations from Madako's public API. Internal modules under `madako` include annotations but are not covered by compatibility guarantees during the 0.x series.
 

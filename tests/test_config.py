@@ -11,6 +11,7 @@ def test_defaults_are_relative_to_working_directory(tmp_path: Path) -> None:
     assert config.source is None
     assert config.dbt_project_dir == tmp_path
     assert config.storage_dir == tmp_path / ".madako"
+    assert config.max_bytes_billed is None
     assert config.bigquery_project is None
     assert config.location == "asia-northeast1"
     assert config.threads == 4
@@ -83,6 +84,7 @@ def test_direct_mode_is_explicitly_resolved(tmp_path: Path) -> None:
         "[server]\nport = 70000",
         "[bigquery]\nlocation = ''",
         "[bigquery]\nthreads = 0",
+        "[profiling]\nunknown = 1000",
         "[storage]\nmode = 'remote'",
         "[storage]\nkeep_generations = 1",
     ],
@@ -93,3 +95,23 @@ def test_invalid_config_is_rejected(tmp_path: Path, content: str) -> None:
 
     with pytest.raises(ValueError, match="Invalid config"):
         load_config(config_file, start_dir=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [('"1 GB"', 1_000_000_000), ('"1 GiB"', 1024**3), (1200, 1200), ('"1.5 KB"', 1500)],
+)
+def test_shared_profiling_budget_is_parsed(tmp_path, value, expected):
+    config_file = tmp_path / "madako.toml"
+    config_file.write_text(f"[profiling]\nmax_bytes_billed = {value}\n", encoding="utf-8")
+
+    assert load_config(config_file).max_bytes_billed == expected
+
+
+@pytest.mark.parametrize("value", [0, -1, '"invalid"', '"0 GB"', '"0.1 B"'])
+def test_invalid_shared_budget_is_rejected(tmp_path, value):
+    config_file = tmp_path / "madako.toml"
+    config_file.write_text(f"[profiling]\nmax_bytes_billed = {value}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid config"):
+        load_config(config_file)

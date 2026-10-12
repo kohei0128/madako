@@ -54,7 +54,7 @@ profiling設定を変更した後は、`dbt docs generate`または`dbt parse`�
 
 `treat_empty_string_as_null: true`を指定すると、STRINGカラムの空文字（`''`）をNULLと合わせてMissingとして集計します。既定値は`false`で、その場合はNULLだけがMissingです。空白だけの文字列（例: `' '`）は空文字に含みません。
 
-`max_bytes_billed`は、1回のプロファイリングでそのmodelまたはsource全体に使える課金bytesの上限です。Overallと設定した全dimensionのqueryをdry runし、見積の**合計**を上限と比較します。1つでもrelationの上限を超える場合、そのplanに含まれるすべての実queryを開始しません。未指定のrelationではdry runを省略します。
+`max_bytes_billed`は、1回のプロファイリングでそのmodelまたはsource全体に使える課金bytesの上限です。Overallと設定した全dimensionのqueryをdry runし、見積の**合計**を上限と比較します。1つでもrelationの上限を超える場合、そのplanに含まれるすべての実queryを開始しません。`madako.toml`に共通上限がある場合、YAMLに上限がないrelationも見積もります。どちらの上限もない場合に限り、dry runを省略します。
 
 たとえば上限が`"1 GB"`の場合、各600 MBのqueryが2本あれば合計1.2 GBとなり、実行できません。`madako plan`にはqueryごとの見積、relationの合計見積、上限を表示します。
 
@@ -102,6 +102,9 @@ project = "your-gcp-project"
 location = "asia-northeast1"
 threads = 4
 
+[profiling]
+max_bytes_billed = "1 GB"
+
 [server]
 host = "127.0.0.1"
 port = 8000
@@ -112,6 +115,17 @@ keep_generations = 3
 ```
 
 相対pathは`madako.toml`の場所を基準にします。Madakoは現在のdirectoryから親へ向かって設定ファイルを探すため、project内のどこからでも実行できます。別の設定ファイルは`madako --config path/to/madako.toml <command>`で指定します。
+
+`profiling.max_bytes_billed`は、profileを有効にしたすべてのmodel・sourceへ適用する共通上限です。1回の実行で、各relationのOverallと全dimensionのqueryを合算して上限と比較します。relationのYAMLにも`max_bytes_billed`がある場合は小さい方を適用します。例えば共通上限が`"1 GB"`なら、YAMLが`"500 MB"`のrelationには500 MB、`"2 GB"`のrelationには1 GBを適用します。共通上限を省略するとYAMLの上限を使います。どちらもbyte数の整数や`"1 GB"`、`"1 GiB"`などの文字列で指定できます。
+
+各relationの合計見積と適用上限を確認するには、保存済みのmetadataを更新してplanを表示します。
+
+```bash
+madako import-dbt
+madako plan
+```
+
+1つでも上限を超えるrelationがある場合、すべてのqueryを実行前に止め、対象relationと見積を表示します。そのrelationの`where`条件などで対象行を絞り、dbt artifactを再生成して実行し直してください。
 
 `bigquery.threads`は同時にprofileするrelation数です（既定4）。異なるrelationは並列に実行し、同じrelation内ではOverallの完了後にdimensionを順番に実行します。一時的に変更する場合は`madako profile --threads 8`のように指定できます。
 
@@ -164,7 +178,7 @@ madako profile --help
 
 ## queryの安全性
 
-- `max_bytes_billed`を指定したrelationだけ、実行前にqueryをdry runします。
+- 共通上限またはYAMLの`max_bytes_billed`が適用されるrelationは、実行前にqueryをdry runします。
 - relationごとのdry run見積の合計が上限を超える場合、plan全体の実queryを開始しません。実行時もrelation内の全queryで課金bytesの残額を共有します。
 - 実際の合計処理量をsummaryへ表示し、verboseではqueryごとの処理量も表示します。
 - STRING dimensionはOverallを先に実行し、追加queryなしでDistinct数を確認してから実行します。
@@ -204,12 +218,15 @@ from madako import DataProfile
 catalog = DataProfile.from_dbt_project(
     project_dir="path/to/dbt-project",
     storage_dir=".madako",
+    max_bytes_billed="1 GB",
 )
 plan = catalog.plan(select="events")
 result = catalog.run(plan)
 
 print(result.successful)
 ```
+
+Python APIでは、`DataProfile`、`from_storage`、`from_dbt_project`の`max_bytes_billed`引数で共通上限を指定します。`madako.toml`は自動では読み込みません。
 
 配布packageにはPEP 561の`py.typed` markerを同梱しており、mypyなどのtype checkerがMadakoの公開APIのinline型注釈を利用できます。`madako`配下の内部moduleにも型情報はありますが、0.xの間は互換性保証の対象外です。
 
