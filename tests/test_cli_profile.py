@@ -134,3 +134,62 @@ def test_cli_unexpected_error_is_not_hidden(monkeypatch, tmp_path, capsys):
     with pytest.raises(RuntimeError, match="unexpected bug"):
         main()
     assert "Error: Import failed · unexpected bug" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("command", ["plan", "profile"])
+@pytest.mark.parametrize("local_budget, expected", [(None, 1_000), (800, 800), (2_000, 1_000)])
+def test_cli_applies_toml_budget_and_blocks_entire_plan(
+    command, local_budget, expected, tmp_path, monkeypatch, capsys,
+):
+    from madako import BigQueryAdapter
+    from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
+    from madako.storage import write_profile_storage
+
+    model = ModelProfile(
+        unique_id="model.test.events", name="events", database="project", schema_name="dataset",
+        relation_name="`project.dataset.events`", materialization="table",
+        columns=[ColumnMetadata(name="day", data_type="DATE")],
+        profiling=ProfilingConfig(enabled=True, dimensions=["day"], max_bytes_billed=local_budget),
+    )
+    source = model.model_copy(deep=True, update={
+        "unique_id": "source.test.raw.events", "resource_type": "source", "relation_name": "`raw.events`",
+    })
+    source.profiling.max_bytes_billed = None
+    storage_dir = tmp_path / ".madako"
+    write_profile_storage([model, source], storage_dir)
+    (tmp_path / "madako.toml").write_text(
+        '[profiling]\nmax_bytes_billed = "1 KB"\n', encoding="utf-8",
+    )
+    estimates = []
+
+    def estimate(self, sql, project, location):
+        estimates.append(sql)
+        return 600 if "`project.dataset.events`" in sql else 100
+
+    monkeypatch.setattr(BigQueryAdapter, "estimate", estimate)
+    monkeypatch.setattr(
+        BigQueryAdapter, "execute",
+        lambda *_: pytest.fail("Over-budget plan must not execute any queries"),
+    )
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model, source])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "argv", ["madako", command])
+
+    if command == "profile":
+        with pytest.raises(SystemExit) as raised:
+            main()
+        assert raised.value.code == 1
+    else:
+        main()
+
+    output = capsys.readouterr().out
+    assert len(estimates) == 4
+    assert "model.test.events" in output
+    if command == "plan":
+        assert "Relation estimated total: 1.2 KiB" in output
+        assert f"Relation maximum billed: {expected:,} B" in output
+        assert "[BLOCKED] model.test.events" in output
+        assert "[READY] source.test.raw.events" in output
+    else:
+        assert f"1.2 KiB relation total estimated exceeds {expected:,} B relation limit" in output
+        assert "no queries will run" in output

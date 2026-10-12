@@ -45,8 +45,16 @@ models:
         profiling:
           enabled: true
           dimensions: [event_date, service]
-          max_bytes_billed: "1 GB"
 ```
+
+Set a shared budget for each enabled model and source in `madako.toml`:
+
+```toml
+[profiling]
+max_bytes_billed = "1 GB"
+```
+
+Each relation's Overall and dimension queries share this budget for one run. A smaller `max_bytes_billed` in the relation's YAML takes precedence. Use `madako plan` after importing dbt metadata to inspect the total estimates and applied limits; if any relation exceeds its limit, the entire plan stops before querying.
 
 Then generate dbt artifacts, profile the selected relations, and explore the results:
 
@@ -62,7 +70,7 @@ See the [English getting started guide](https://github.com/kohei0128/madako/blob
 
 - **Data with context:** inspect profiles alongside dbt descriptions, tests, and direct lineage, with date or category breakdowns when you need them.
 - **Profiling without changing your DAG:** avoid adding profiling-specific dbt models or persistent BigQuery tables by storing results locally as Parquet files.
-- **Explicit query controls:** opt models into profiling and set a shared billed-byte budget for each relation’s Overall and dimension queries in dbt YAML.
+- **Explicit query controls:** opt models into profiling and set a billed-byte budget for each relation’s Overall and dimension queries in `madako.toml` or dbt YAML.
 
 Evaluating dbt-profiler? It provides dbt-native macros and generated outputs, while Madako runs profiling for configured models and sources, stores the results separately, and presents them in its Web UI. See the [short comparison in the getting started guide](https://github.com/kohei0128/madako/blob/main/docs/en/getting-started.md#faq-how-is-madako-different-from-dbt-profiler).
 

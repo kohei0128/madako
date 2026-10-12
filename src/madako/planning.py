@@ -140,16 +140,29 @@ class ProfilePlanExecution(BaseModel):
     model_config = {"frozen": True}
 
 
+def _effective_budget(model: ModelProfile, max_bytes_billed: int | None) -> int | None:
+    relation_budget = model.profiling.max_bytes_billed
+    if relation_budget is None:
+        return max_bytes_billed
+    if max_bytes_billed is None:
+        return relation_budget
+    return min(relation_budget, max_bytes_billed)
+
+
 def create_profile_plan(
     models: list[ModelProfile],
     *,
     selector: str | None = None,
     project: str | None = None,
     location: str = "asia-northeast1",
+    max_bytes_billed: int | None = None,
     adapter: WarehouseAdapter | None = None,
     estimator: Estimator | None = None,
     progress: ProgressCallback | None = None,
 ) -> list[ProfilePlanItem]:
+    """Plan with the smaller of the shared and YAML budgets for each relation."""
+    if max_bytes_billed is not None and max_bytes_billed <= 0:
+        raise PlanningError("max_bytes_billed must be positive")
     warehouse = complete_adapter(adapter)
     estimate = estimator or warehouse.estimate
     supported_types = warehouse.supported_types
@@ -170,12 +183,13 @@ def create_profile_plan(
     ]
     plan: list[ProfilePlanItem] = []
     for index, (model, dimension) in enumerate(targets, start=1):
+        budget = _effective_budget(model, max_bytes_billed)
         skipped = tuple(column.name for column in model.columns if column.data_type not in supported_types)
         query_project = project or model.database
         try:
             sql = warehouse.build_profile_query(model, dimension)
             estimated = None
-            if model.profiling.max_bytes_billed is not None:
+            if budget is not None:
                 _notify(progress, ProfileProgress(
                     event="estimate_started", current=index, total=len(targets),
                     model=model, dimension=dimension,
@@ -203,12 +217,12 @@ def create_profile_plan(
             project=query_project,
             location=location,
             estimated_bytes=estimated,
-            max_bytes_billed=model.profiling.max_bytes_billed,
+            max_bytes_billed=budget,
             skipped_columns=skipped,
             model_signature=model.profiling_signature(),
         )
         plan.append(item)
-        if model.profiling.max_bytes_billed is not None:
+        if budget is not None:
             _notify(progress, ProfileProgress(
                 event="estimate_completed", current=index, total=len(targets),
                 model=model, dimension=dimension, item=item,
@@ -220,11 +234,15 @@ def execute_profile_plan(
     models: list[ModelProfile],
     plan: list[ProfilePlanItem],
     *,
+    max_bytes_billed: int | None = None,
     adapter: WarehouseAdapter | None = None,
     runner: Runner | None = None,
     progress: ProgressCallback | None = None,
     threads: int = 1,
 ) -> ProfilePlanExecution:
+    """Run a plan under the same shared budget supplied when planning."""
+    if max_bytes_billed is not None and max_bytes_billed <= 0:
+        raise PlanningError("max_bytes_billed must be positive")
     if threads < 1:
         raise PlanningError("threads must be at least 1")
     warehouse = complete_adapter(adapter)
@@ -236,7 +254,7 @@ def execute_profile_plan(
         model = current.get(item.model.unique_id)
         if (model is None or model.profiling_signature() != item.model_signature
                 or item.model.profiling_signature() != item.model_signature
-                or item.max_bytes_billed != model.profiling.max_bytes_billed):
+                or item.max_bytes_billed != _effective_budget(model, max_bytes_billed)):
             raise PlanningError("stale or modified plan; create a new plan before running")
     costs = relation_costs(plan)
     blocked = {unique_id for unique_id, cost in costs.items() if not cost.executable}

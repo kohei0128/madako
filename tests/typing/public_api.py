@@ -5,7 +5,7 @@ from madako import DataProfile, ProfilePlan, ProfileResult
 
 
 def check_public_api(storage_dir: Path) -> None:
-    profile = assert_type(DataProfile.from_storage(storage_dir), DataProfile)
+    profile = assert_type(DataProfile.from_storage(storage_dir, max_bytes_billed="1 GB"), DataProfile)
     plan = assert_type(profile.plan(), ProfilePlan)
     result = assert_type(profile.run(plan), ProfileResult)
 

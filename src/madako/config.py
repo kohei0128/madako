@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from madako.models import MaxBytesBilled
+
 
 CONFIG_FILENAME = "madako.toml"
 
@@ -24,6 +26,12 @@ class BigQueryConfig(BaseModel):
     project: str | None = Field(default=None, min_length=1)
     location: str = Field(default="asia-northeast1", min_length=1)
     threads: int = Field(default=4, ge=1)
+
+
+class ProfilingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_bytes_billed: MaxBytesBilled | None = None
 
 
 class ServerConfig(BaseModel):
@@ -45,6 +53,7 @@ class ConfigFile(BaseModel):
 
     project: ProjectConfig = ProjectConfig()
     bigquery: BigQueryConfig = BigQueryConfig()
+    profiling: ProfilingConfig = ProfilingConfig()
     server: ServerConfig = ServerConfig()
     storage: StorageConfig = StorageConfig()
 
@@ -61,6 +70,7 @@ class MadakoConfig:
     port: int
     use_generations: bool | None
     keep_generations: int
+    max_bytes_billed: int | None = None
 
 
 def find_config(start_dir: Path | None = None) -> Path | None:
@@ -118,4 +128,5 @@ def load_config(
             else None
         ),
         keep_generations=values.storage.keep_generations,
+        max_bytes_billed=values.profiling.max_bytes_billed,
     )

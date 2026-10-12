@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from madako import DataProfile, ProfilePlan, ProfileProgress, ProfileResult, QueryExecution, __version__
+from madako.exceptions import PlanningError
 from madako.models import ColumnMetadata, ModelProfile, ProfilingConfig
 from madako.storage import write_profile_storage
 
@@ -498,3 +499,36 @@ def test_empty_table_has_overall_without_date_buckets(tmp_path: Path, where: str
     assert len(persisted.profiles) == 1
     assert persisted.profiles[0].record_count == 0
     assert persisted.profiling.where == where
+
+
+@pytest.mark.parametrize("factory", [DataProfile, DataProfile.from_storage, DataProfile.from_dbt_project])
+def test_public_api_shared_budget_preserves_yaml_and_saved_profiles(factory, tmp_path, monkeypatch):
+    model = configured_model()
+    model.profiling.max_bytes_billed = None
+    write_profile_storage([model], tmp_path)
+    monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
+    kwargs = {"project_dir": tmp_path} if factory == DataProfile.from_dbt_project else {}
+    budgets = []
+
+    def runner(sql, project, location, maximum):
+        budgets.append(maximum)
+        return QueryExecution(rows=rows_for_sql(sql), bytes_billed=100)
+
+    app = factory(
+        storage_dir=tmp_path, max_bytes_billed="1 KB", estimator=lambda *_: 500,
+        runner=runner, **kwargs,
+    )
+    result = app.profile()
+
+    assert result.successful
+    assert result.plan.estimated_bytes == 1_000
+    assert result.plan.relation_costs[model.unique_id].max_bytes_billed == 1_000
+    assert budgets == [1_000, 900]
+    previous = app.models()[0]
+    assert previous.profiling.max_bytes_billed is None
+
+    changed_policy = DataProfile(tmp_path, max_bytes_billed=100)
+    assert changed_policy.models()[0].profiles == previous.profiles
+    assert changed_policy.models()[0].profiled_at == previous.profiled_at
+    with pytest.raises(PlanningError, match="stale or modified plan"):
+        changed_policy.run(result.plan)
