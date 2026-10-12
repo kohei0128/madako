@@ -99,7 +99,9 @@ class ProfilingConfig(BaseModel):
     enabled: bool = False
     dimensions: list[str] = Field(default_factory=list)
     max_dimension_values: Annotated[int, Field(gt=0)] = 10_000
-    max_bytes_billed: Annotated[int, Field(gt=0)] | None = None
+    max_bytes_billed: Annotated[int, Field(gt=0)] | None = Field(
+        default=None, description="Billed-byte budget per profiling run for this relation, including all dimensions"
+    )
     treat_empty_string_as_null: bool = False
     where: str | None = None
 

@@ -54,7 +54,11 @@ If `dimensions` is omitted, Madako only calculates an overall profile. A dimensi
 
 With `treat_empty_string_as_null: true`, empty strings (`''`) in STRING columns are included in the Missing metric alongside NULL values. The default is `false`, which counts only NULL as Missing. Strings containing only whitespace, such as `' '`, are not empty strings.
 
-Set `max_bytes_billed` on any model or source for which you want a preflight query-cost check. Madako dry-runs every query for that relation and starts no real query for it if any estimate exceeds the limit. Relations without this setting skip the dry run.
+Set `max_bytes_billed` on a model or source to limit the total billed bytes for that relation in one profiling run. Madako dry-runs Overall and every configured dimension query and compares their **sum** with the limit. If any relation exceeds its budget, no real query in the entire plan starts. Relations without this setting skip the dry run.
+
+For example, a `"1 GB"` limit blocks two queries estimated at 600 MB each, even though each query individually fits. This changes the earlier per-query meaning of the same YAML key; review existing limits when upgrading. `madako plan` shows each query estimate, the relation total, and its budget.
+
+During execution, each BigQuery query receives the relation’s remaining budget as `maximum_bytes_billed`. Actual billed bytes, including billing minimums and rounding, are deducted before the next query. Estimates can differ from billed bytes, so a plan that passes the preflight check can still stop during execution. Dimensions skipped for cardinality consume no execution budget, but their estimates are included in the preflight total. Custom adapters/runners should return `QueryExecution.bytes_billed`; without it, Madako conservatively counts the full query allowance as spent and cannot run further queries for that relation.
 
 ```yaml
 config:
@@ -161,7 +165,7 @@ madako profile --help
 ## Query safety
 
 - Madako dry-runs queries only for relations that set `max_bytes_billed`.
-- If any dry-run estimate for a relation exceeds its limit, Madako starts no real query for that relation.
+- If the sum of a relation’s dry-run estimates exceeds its limit, Madako starts no real query in the entire plan. During execution, all queries for that relation share the remaining billed-byte budget.
 - The summary reports the total bytes processed by BigQuery. Verbose output also shows bytes per query.
 - Madako runs the Overall profile before a STRING dimension and uses its distinct count without an additional query to decide whether to proceed.
 - Different relations run concurrently up to `bigquery.threads`; queries for one relation run sequentially.

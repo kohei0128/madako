@@ -8,7 +8,11 @@ from madako.models import ModelProfile, ProfileSlice
 
 @dataclass(frozen=True)
 class QueryExecution:
-    """Rows returned by a query and its warehouse-reported usage."""
+    """Rows returned by a query and its warehouse-reported usage.
+
+    Report bytes_billed to release unused budget for the relation's next query.
+    When absent, the full query allowance is conservatively counted as spent.
+    """
 
     rows: list[dict]
     bytes_processed: int | None = None

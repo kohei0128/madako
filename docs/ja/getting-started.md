@@ -54,7 +54,11 @@ profiling設定を変更した後は、`dbt docs generate`または`dbt parse`�
 
 `treat_empty_string_as_null: true`を指定すると、STRINGカラムの空文字（`''`）をNULLと合わせてMissingとして集計します。既定値は`false`で、その場合はNULLだけがMissingです。空白だけの文字列（例: `' '`）は空文字に含みません。
 
-事前にquery量を確認したいモデルやsourceだけ、`max_bytes_billed`を指定します。指定したrelationでは実行前にdry runし、いずれかのqueryが上限を超える場合は実データへのqueryを開始しません。未指定の場合はdry runを省略します。
+`max_bytes_billed`は、1回のプロファイリングでそのmodelまたはsource全体に使える課金bytesの上限です。Overallと設定した全dimensionのqueryをdry runし、見積の**合計**を上限と比較します。1つでもrelationの上限を超える場合、そのplanに含まれるすべての実queryを開始しません。未指定のrelationではdry runを省略します。
+
+たとえば上限が`"1 GB"`の場合、各600 MBのqueryが2本あれば合計1.2 GBとなり、実行できません。同じYAMLキーの意味を従来のquery単位からrelation単位へ変更したため、アップグレード時には既存の上限を確認してください。`madako plan`にはqueryごとの見積、relationの合計見積、上限を表示します。
+
+実行時はrelationの残額を各BigQuery queryの`maximum_bytes_billed`に渡し、最小課金量や丸めを含む実際の課金bytesを差し引いてから次のqueryを実行します。見積と課金量は異なる場合があるため、事前判定を通過しても実行中に停止することがあります。Distinct数によってskipしたdimensionは実行時の予算を消費しませんが、事前判定にはその見積も含めます。独自adapterやrunnerは`QueryExecution.bytes_billed`を返してください。未報告の場合は安全側にqueryへ渡した上限全額を消費済みと扱い、そのrelationの後続queryは実行できません。
 
 ```yaml
 config:
@@ -161,7 +165,7 @@ madako profile --help
 ## queryの安全性
 
 - `max_bytes_billed`を指定したrelationだけ、実行前にqueryをdry runします。
-- dry runしたqueryのいずれかが上限を超える場合、そのrelationでは実queryを開始しません。
+- relationごとのdry run見積の合計が上限を超える場合、plan全体の実queryを開始しません。実行時もrelation内の全queryで課金bytesの残額を共有します。
 - BigQueryが報告した合計処理量をsummaryへ表示し、verboseではqueryごとの処理量も表示します。
 - STRING dimensionはOverallを先に実行し、追加queryなしでDistinct数を確認してから実行します。
 - 異なるrelationのqueryは`bigquery.threads`を上限に並列実行し、同じrelation内では順番に実行します。

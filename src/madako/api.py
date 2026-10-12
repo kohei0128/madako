@@ -12,8 +12,10 @@ from madako.planning import (
     ProfileProgress,
     ProgressCallback,
     Runner,
+    RelationCost,
     create_profile_plan,
     execute_profile_plan,
+    relation_costs,
 )
 from madako.storage import ParquetProfileStorage, ProfileStorage, import_dbt_profiles
 
@@ -33,8 +35,13 @@ class ProfilePlan(BaseModel):
 
     @property
     def executable(self) -> bool:
-        """All items are within their configured max_bytes_billed limit."""
-        return bool(self.items) and all(item.executable for item in self.items)
+        """All relation totals are within their configured max_bytes_billed budgets."""
+        return bool(self.items) and all(cost.executable for cost in self.relation_costs.values())
+
+    @property
+    def relation_costs(self) -> dict[str, RelationCost]:
+        """Estimates summed across Overall and all dimensions, keyed by unique ID."""
+        return relation_costs(self.items)
 
     @property
     def estimated_bytes(self) -> int | None:

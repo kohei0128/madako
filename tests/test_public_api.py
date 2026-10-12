@@ -69,7 +69,7 @@ def test_public_api_plans_profiles_and_persists_results(tmp_path: Path) -> None:
     app = DataProfile.from_storage(
         tmp_path,
         estimator=lambda sql, *_: estimator_calls.append(sql) or 1_000,
-        runner=lambda sql, *_: runner_calls.append(sql) or rows_for_sql(sql),
+        runner=lambda sql, *_: runner_calls.append(sql) or QueryExecution(rows=rows_for_sql(sql), bytes_billed=100),
     )
 
     plan = app.plan(select="events")
@@ -100,13 +100,31 @@ def test_profile_is_plan_and_run_shortcut(tmp_path: Path) -> None:
     app = DataProfile(
         tmp_path,
         estimator=lambda *_: 1_000,
-        runner=lambda sql, *_: rows_for_sql(sql),
+        runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100),
     )
 
     result = app.profile(select="events")
 
     assert result.profiled_models == ("events",)
     assert [item.dimension for item in result.plan.items] == [None, "event_date"]
+
+
+@pytest.mark.parametrize("estimate, billed, expected_calls", [(6_000, 100, 0), (1_000, 10_000, 1)])
+def test_relation_budget_failure_preserves_existing_storage(tmp_path, estimate, billed, expected_calls) -> None:
+    paths = write_profile_storage([configured_model()], tmp_path)
+    before = [path.read_bytes() for path in paths]
+    calls = []
+
+    def run(sql, _project, _location, maximum):
+        calls.append(maximum)
+        return QueryExecution(rows=rows_for_sql(sql), bytes_billed=billed)
+
+    result = DataProfile(tmp_path, estimator=lambda *_: estimate, runner=run).profile()
+
+    assert not result.successful
+    assert not result.storage_updated
+    assert len(calls) == expected_calls
+    assert [path.read_bytes() for path in paths] == before
 
 
 def test_cardinality_skip_is_successful_and_saves_overall_profile(tmp_path: Path) -> None:
@@ -155,7 +173,7 @@ def test_profile_reports_planning_execution_and_storage_progress(tmp_path: Path)
         tmp_path,
         estimator=lambda *_: 1_000,
         runner=lambda sql, *_: QueryExecution(
-            rows=rows_for_sql(sql), bytes_processed=2_000, bytes_billed=10_485_760,
+            rows=rows_for_sql(sql), bytes_processed=2_000, bytes_billed=3_000,
         ),
     ).profile(select="events", progress=events.append)
 
@@ -216,9 +234,9 @@ def test_adapter_failure_after_success_preserves_storage(tmp_path: Path, bad_row
             return 100
 
         def execute(self, sql, project, location, max_bytes_billed):
-            assert (project, location, max_bytes_billed) == ("billing", "US", 10_000)
+            assert (project, location, max_bytes_billed) == ("billing", "US", 10_000 - 100 * self.calls)
             self.calls += 1
-            return rows_for_sql(sql) if self.calls == 1 else bad_rows
+            return QueryExecution(rows=rows_for_sql(sql) if self.calls == 1 else bad_rows, bytes_billed=100)
 
     adapter = FakeWarehouse()
     app = DataProfile.from_storage(tmp_path, adapter=adapter)
@@ -239,7 +257,7 @@ def test_storage_error_remains_exception(tmp_path: Path, monkeypatch) -> None:
     from madako import StorageOperationError
 
     write_profile_storage([configured_model()], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
 
     def fail_save(*args):
         raise OSError("disk full")
@@ -275,7 +293,7 @@ def test_custom_storage_receives_only_complete_results(tmp_path: Path, failure: 
     def run(sql, *_args):
         if failure:
             raise RuntimeError("query failure")
-        return rows_for_sql(sql)
+        return QueryExecution(rows=rows_for_sql(sql), bytes_billed=100)
 
     app = DataProfile.from_storage(tmp_path, storage=storage, estimator=lambda *_: 1, runner=run)
     result = app.profile()
@@ -292,7 +310,7 @@ def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
     model = configured_model()
     write_profile_storage([model], tmp_path)
     calls = []
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: calls.append(True) or rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: calls.append(True) or QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     plan = app.plan()
     if change == "remove":
         write_profile_storage([], tmp_path)
@@ -315,7 +333,7 @@ def test_stale_plan_never_executes(tmp_path: Path, change: str) -> None:
 @pytest.mark.parametrize("bad_result", ["column", "duplicate", "bucket", "record_count", "type", "rate"])
 def test_incomplete_results_preserve_existing_storage(tmp_path: Path, bad_result: str) -> None:
     write_profile_storage([configured_model()], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     before = [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]]
     rows = profile_rows()
@@ -331,7 +349,7 @@ def test_incomplete_results_preserve_existing_storage(tmp_path: Path, bad_result
         rows[-1]["column_type"] = "STRING"
     else:
         rows[-1]["null_rate"] = "0.5"
-    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql, rows)).profile()
+    result = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql, rows), bytes_billed=100)).profile()
     assert not result.successful
     assert result.failed
     assert [(tmp_path / name).read_bytes() for name in ["models.parquet", "column_profiles.parquet"]] == before
@@ -342,7 +360,7 @@ def test_null_date_bucket_is_saved_separately_from_overall(tmp_path: Path) -> No
     rows = profile_rows()
     for row in rows[2:]:
         row["dimension_value"] = None
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql, rows))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql, rows), bytes_billed=100))
     assert app.profile().successful
     profiles = app.models()[0].profiles
     assert [(profile.dimension_name, profile.dimension_value) for profile in profiles] == [(None, None), ("event_date", None)]
@@ -353,7 +371,7 @@ def test_reimport_preserves_only_compatible_profiles(tmp_path: Path, monkeypatch
     from madako.storage import ParquetProfileStorage, import_dbt_profiles
     model = configured_model()
     write_profile_storage([model], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     model.profiling.treat_empty_string_as_null = changed
     monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
@@ -377,7 +395,7 @@ def test_reimport_preserves_profiles_when_execution_controls_change(
 
     model = configured_model()
     write_profile_storage([model], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     setattr(model.profiling, field, value)
     monkeypatch.setattr("madako.storage.read_dbt_artifacts", lambda _: [model])
@@ -402,7 +420,7 @@ def test_reimport_only_keeps_profiles_with_the_same_where(tmp_path, monkeypatch,
     model.profiling.where = before
     storage = ParquetProfileStorage(tmp_path)
     storage.save([model])
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     previous = app.models()[0]
     model.profiling = ProfilingConfig(**{**model.profiling.model_dump(), "where": after})
@@ -430,7 +448,7 @@ def test_legacy_storage_without_where_keeps_unfiltered_profiles_on_reimport(tmp_
     model = configured_model()
     storage = ParquetProfileStorage(tmp_path)
     storage.save([model])
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     previous = storage.load()[0]
     legacy_config = model.profiling.model_dump(exclude={"where"})
@@ -452,7 +470,7 @@ def test_reimport_invalidates_profiles_from_old_computation_version(tmp_path: Pa
     from madako.storage import ParquetProfileStorage, import_dbt_profiles
     current = configured_model()
     write_profile_storage([current], tmp_path)
-    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: rows_for_sql(sql))
+    app = DataProfile(tmp_path, estimator=lambda *_: 1, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql), bytes_billed=100))
     assert app.profile().successful
     profiled = app.models()[0].model_copy(update={"profile_version": 1})
     write_profile_storage([profiled], tmp_path)
@@ -474,7 +492,7 @@ def test_empty_table_has_overall_without_date_buckets(tmp_path: Path, where: str
     rows = profile_rows()[:2]
     for row in rows:
         row.update(record_count="0", min_value=None, max_value=None, null_rate=None)
-    app = DataProfile(tmp_path, estimator=lambda *_: 0, runner=lambda sql, *_: rows_for_sql(sql, rows))
+    app = DataProfile(tmp_path, estimator=lambda *_: 0, runner=lambda sql, *_: QueryExecution(rows=rows_for_sql(sql, rows), bytes_billed=100))
     assert app.profile().successful
     persisted = app.models()[0]
     assert len(persisted.profiles) == 1

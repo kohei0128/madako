@@ -130,17 +130,25 @@ class ProfileRenderer(AbstractContextManager):
     def plan_completed(self, plan: ProfilePlan) -> None:
         relations = len({item.model.unique_id for item in plan.items})
         self.phase_completed(f"Planned {len(plan.items):,} queries for {relations:,} relations")
+        for unique_id, cost in plan.relation_costs.items():
+            if cost.estimated_bytes is None:
+                continue
+            assert cost.max_bytes_billed is not None
+            if not cost.executable:
+                self.error(
+                    f"{unique_id}: {format_bytes(cost.estimated_bytes)} relation total estimated exceeds "
+                    f"{format_bytes(cost.max_bytes_billed)} relation limit; no queries will run"
+                )
+            elif self.verbose:
+                self._line(
+                    f"[PLAN] {unique_id} · {format_bytes(cost.estimated_bytes)} relation total estimated / "
+                    f"{format_bytes(cost.max_bytes_billed)} relation maximum"
+                )
         for item in plan.items:
             label = f"{item.model.unique_id} / {item.dimension or 'Overall'}"
-            if not item.executable:
-                assert item.estimated_bytes is not None and item.max_bytes_billed is not None
-                self.error(
-                    f"{label}: {format_bytes(item.estimated_bytes)} estimated exceeds "
-                    f"{format_bytes(item.max_bytes_billed)} limit; no queries will run"
-                )
             if self.verbose:
                 if item.estimated_bytes is None:
-                    self._line(f"[PLAN] {label} · Query cost check: disabled")
+                    self._line(f"[PLAN] {label} · Relation cost check: disabled")
                 if item.skipped_columns:
                     self._line(f"[PLAN] {label} · Unsupported columns omitted: {', '.join(item.skipped_columns)}")
 
@@ -166,10 +174,9 @@ class ProfileRenderer(AbstractContextManager):
         elif event == "estimate_completed" and self.verbose:
             item = progress.item
             assert item is not None and item.estimated_bytes is not None
-            assert item.max_bytes_billed is not None
             self._line(
                 f"[PLAN {position}] {label} · {format_bytes(item.estimated_bytes)} "
-                f"estimated / {format_bytes(item.max_bytes_billed)} maximum"
+                "query estimated"
             )
         elif event == "estimate_failed":
             self.error(f"Could not plan {label} · {progress.error}")

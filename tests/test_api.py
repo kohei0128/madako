@@ -9,7 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from madako import __version__
-from madako.api import DataProfile
+from madako.api import DataProfile, ProfilePlan
 from madako.cli import main as cli_main
 from madako.models import ColumnMetadata, ColumnProfile, ModelProfile, ProfileSlice, ProfilingConfig
 from madako.planning import ProfileItemResult, ProfilePlanItem, ProfileProgress
@@ -326,7 +326,7 @@ def test_cli_profile_imports_dbt_artifacts_before_profiling(
         encoding="utf-8",
     )
     calls: list[object] = []
-    plan = SimpleNamespace(items=())
+    plan = ProfilePlan(items=())
     skipped = SimpleNamespace(
         item=SimpleNamespace(
             model=SimpleNamespace(name="events", unique_id="model.demo.events"),

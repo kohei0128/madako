@@ -285,7 +285,7 @@ def test_verbose_includes_omitted_columns_with_or_without_cost_check(cost_check)
     renderer.plan_completed(ProfilePlan(items=(item,)))
     rendered = output.getvalue()
     assert rendered.count("Unsupported columns omitted: payload") == 1
-    assert ("1.0 KiB estimated / 2.0 KiB maximum" if cost_check else "Query cost check: disabled") in rendered
+    assert ("1.0 KiB relation total estimated / 2.0 KiB relation maximum" if cost_check else "Relation cost check: disabled") in rendered
 
 
 def test_cost_limit_error_is_visible_without_per_query_cascade_warnings() -> None:
@@ -304,7 +304,7 @@ def test_cost_limit_error_is_visible_without_per_query_cascade_warnings() -> Non
         ))
     renderer.event(ProfileProgress(event="storage_discarded", total=2))
     rendered = output.getvalue()
-    assert "Error: model.demo.large / Overall: 2.0 KiB estimated exceeds 1.0 KiB limit" in rendered
+    assert "Error: model.demo.large: 2.0 KiB relation total estimated exceeds 1.0 KiB relation limit" in rendered
     assert "no queries will run" in rendered
     assert "Profile failed: 2 skipped" in rendered
     assert "model.demo.other" not in rendered

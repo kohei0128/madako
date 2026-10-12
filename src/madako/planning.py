@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,7 +28,7 @@ class ProfilePlanItem(BaseModel):
         default=None, description="Estimated bytes, or None when cost checking is disabled"
     )
     max_bytes_billed: Annotated[int, Field(gt=0)] | None = Field(
-        default=None, description="Maximum bytes to process, or None when cost checking is disabled"
+        default=None, description="Billed-byte budget for the entire relation, shared by all its queries"
     )
     skipped_columns: tuple[str, ...] = Field(
         default_factory=tuple,
@@ -42,15 +42,36 @@ class ProfilePlanItem(BaseModel):
             raise ValueError("estimated_bytes and max_bytes_billed must both be set or both be None")
         return self
 
+    model_config = {"frozen": True}
+
+
+@dataclass(frozen=True)
+class RelationCost:
+    """Combined estimate and billed-byte budget for one relation in a plan."""
+
+    estimated_bytes: int | None
+    max_bytes_billed: int | None
+
     @property
     def executable(self) -> bool:
-        """Query is within the configured max_bytes_billed limit."""
-        if self.estimated_bytes is None:
-            return True
-        assert self.max_bytes_billed is not None
-        return self.estimated_bytes <= self.max_bytes_billed
+        return self.max_bytes_billed is None or (
+            self.estimated_bytes is not None and self.estimated_bytes <= self.max_bytes_billed
+        )
 
-    model_config = {"frozen": True}
+
+def relation_costs(items: Iterable[ProfilePlanItem]) -> dict[str, RelationCost]:
+    costs: dict[str, RelationCost] = {}
+    for item in items:
+        unique_id = item.model.unique_id
+        previous = costs.get(unique_id)
+        if previous is not None and previous.max_bytes_billed != item.max_bytes_billed:
+            raise PlanningError(f"inconsistent max_bytes_billed for {unique_id}")
+        estimated = item.estimated_bytes
+        if previous is not None and estimated is not None:
+            assert previous.estimated_bytes is not None
+            estimated += previous.estimated_bytes
+        costs[unique_id] = RelationCost(estimated, item.max_bytes_billed)
+    return costs
 
 
 Estimator = Callable[[str, str, str], int]
@@ -214,17 +235,19 @@ def execute_profile_plan(
     for item in plan:
         model = current.get(item.model.unique_id)
         if (model is None or model.profiling_signature() != item.model_signature
-                or item.model.profiling_signature() != item.model_signature):
+                or item.model.profiling_signature() != item.model_signature
+                or item.max_bytes_billed != model.profiling.max_bytes_billed):
             raise PlanningError("stale or modified plan; create a new plan before running")
-    blocked = [item for item in plan if not item.executable]
+    costs = relation_costs(plan)
+    blocked = {unique_id for unique_id, cost in costs.items() if not cost.executable}
     if blocked:
         results = tuple(ProfileItemResult(
             item=item,
             status="skipped",
             error=(
-                "estimated bytes exceed max_bytes_billed"
-                if not item.executable
-                else "plan contains another item over max_bytes_billed"
+                "relation estimated bytes exceed max_bytes_billed"
+                if item.model.unique_id in blocked
+                else "plan contains another relation over max_bytes_billed"
             ),
         ) for item in plan)
         for index, result in enumerate(results, start=1):
@@ -254,6 +277,7 @@ def execute_profile_plan(
         collected: list = []
         relation_results: list[tuple[int, ProfileItemResult]] = []
         relation_failed = False
+        remaining_bytes = indexed_items[0][1].max_bytes_billed
         for index, item in indexed_items:
             current_index = index + 1
             if relation_failed or stop.is_set():
@@ -316,7 +340,9 @@ def execute_profile_plan(
                 model=item.model, dimension=item.dimension, item=item,
             ))
             try:
-                execution = execute(item.sql, item.project, item.location, item.max_bytes_billed)
+                if remaining_bytes is not None and remaining_bytes <= 0:
+                    raise WarehouseError("relation max_bytes_billed budget exhausted; query was not executed")
+                execution = execute(item.sql, item.project, item.location, remaining_bytes)
                 if isinstance(execution, QueryExecution):
                     rows = execution.rows
                     bytes_processed = execution.bytes_processed
@@ -325,6 +351,13 @@ def execute_profile_plan(
                     rows = execution
                     bytes_processed = None
                     bytes_billed = None
+                if remaining_bytes is not None:
+                    # Without billed usage, conservatively reserve the full query
+                    # allowance instead of treating a dry-run estimate as actual cost.
+                    used_bytes = bytes_billed if bytes_billed is not None else remaining_bytes
+                    if used_bytes < 0 or used_bytes > remaining_bytes:
+                        raise WarehouseError("warehouse reported bytes_billed outside the remaining relation budget")
+                    remaining_bytes -= used_bytes
                 profiles = warehouse.parse_profile_rows(item.model, rows, item.dimension)
                 overall = [profile for profile in profiles if profile.dimension_name is None]
                 dimensions = [profile for profile in profiles if profile.dimension_name is not None]

@@ -23,19 +23,26 @@ def _storage(
 
 
 def _print_plan(plan: ProfilePlan, *, show_sql: bool = False) -> None:
+    costs = plan.relation_costs
+    shown_relations: set[str] = set()
     for item in plan.items:
-        status = "READY" if item.executable else "BLOCKED"
+        cost = costs[item.model.unique_id]
+        status = "READY" if cost.executable else "BLOCKED"
         print(f"[{status}] {item.model.unique_id}")
         print(f"  Relation: {item.model.relation_name}")
         print(f"  Dimension: {item.dimension or 'Overall'}")
         if item.model.profiling.where is not None:
             print(f"  WHERE: {item.model.profiling.where}")
         if item.estimated_bytes is None:
-            print("  Query cost check: disabled")
+            print("  Relation cost check: disabled")
         else:
             assert item.max_bytes_billed is not None
-            print(f"  Estimated: {format_bytes(item.estimated_bytes)}")
-            print(f"  Maximum billed: {format_bytes(item.max_bytes_billed)}")
+            print(f"  Query estimated: {format_bytes(item.estimated_bytes)}")
+            if item.model.unique_id not in shown_relations:
+                assert cost.estimated_bytes is not None
+                print(f"  Relation estimated total: {format_bytes(cost.estimated_bytes)}")
+                print(f"  Relation maximum billed: {format_bytes(item.max_bytes_billed)}")
+        shown_relations.add(item.model.unique_id)
         if item.skipped_columns:
             print(f"  Skipped unsupported columns: {', '.join(item.skipped_columns)}")
         if show_sql:
